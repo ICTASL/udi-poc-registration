@@ -36,7 +36,7 @@ public class Initialization extends Application {
 
 	private static ApplicationContext applicationContext;
 	private static Stage applicationPrimaryStage;
-	private static String upgradeServer = null;
+	private static String upgradeServer = "http://localhost:80";
 	private static String tpmRequired = "Y";
 
 	@Override

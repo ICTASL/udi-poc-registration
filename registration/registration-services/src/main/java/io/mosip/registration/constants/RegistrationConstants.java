@@ -134,7 +134,7 @@ public class RegistrationConstants {
 	public static final String REJECT_IMAGE_PATH = "/images/Reject.png";
 	public static final String SEND_EMAIL_IMAGE_PATH = "/images/SendEmail.png";
 	public static final String SEND_EMAIL_FOCUSED_IMAGE_PATH = "/images/sendEmailFocused.png";
-	public static final String LOGO = "/images/logo-final-small.png";
+	public static final String LOGO = "/images/ICTA.jpg";
 	public static final String NEW_REG_IMAGE = "/images/NewReg.png";
 	public static final String NEW_REG_FOCUSED = "/images/NewRegistration.png";
 	public static final String UPDATE_UIN_IMAGE = "/images/UINUpdate.png";
