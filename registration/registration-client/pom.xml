@@ -70,6 +70,13 @@
 			<artifactId>javafx-web</artifactId>
 			<version>${openjfx.version}</version>
 		</dependency>
+		<dependency>
+			<groupId>translit-core-1.0.0</groupId>
+			<artifactId>translit-core-1.0.0</artifactId>
+			<scope>system</scope>
+			<version>1.0.0</version>
+			<systemPath>${project.basedir}/src/main/resources/translit_lib/translit-core-1.0.0.jar</systemPath>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>

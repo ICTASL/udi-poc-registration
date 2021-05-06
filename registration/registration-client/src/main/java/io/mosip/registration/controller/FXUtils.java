@@ -20,6 +20,7 @@ import io.mosip.registration.controller.reg.Validations;
 import io.mosip.registration.dto.RegistrationDTO;
 import io.mosip.registration.dto.mastersync.DocumentCategoryDto;
 import io.mosip.registration.dto.mastersync.GenericDto;
+import io.mosip.registration.util.common.TranslitUtil;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.scene.control.Button;
@@ -292,9 +293,15 @@ public class FXUtils {
 					if (localField != null) {
 						if (haveToTransliterate) {
 							try {
+//								localField
+//										.setText(transliteration.transliterate(ApplicationContext.applicationLanguage(),
+//												ApplicationContext.localLanguage(), field.getText()));
+								TranslitUtil translitUtil = new TranslitUtil();
+								int srcLocale = translitUtil.getSourceLocale();
+								int targetLocale = translitUtil.getTargetLocale();
+
 								localField
-										.setText(transliteration.transliterate(ApplicationContext.applicationLanguage(),
-												ApplicationContext.localLanguage(), field.getText()));
+										.setText(translitUtil.transliterate(srcLocale, targetLocale, field.getText()));
 							} catch (RuntimeException runtimeException) {
 								LOGGER.error("REGISTRATION - TRANSLITERATION ERROR ", APPLICATION_NAME,
 										RegistrationConstants.APPLICATION_ID, runtimeException.getMessage());

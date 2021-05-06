@@ -20,6 +20,8 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import com.asankha.translit.Transliterate;
+import io.mosip.registration.util.common.TranslitUtil;
 import org.joda.time.LocalDate;
 import org.joda.time.Period;
 import org.joda.time.PeriodType;
@@ -1922,8 +1924,14 @@ public class DemographicDetailController extends BaseController {
 		if (secondaryField != null) {
 			if (haveToTransliterate) {
 				try {
-					secondaryField.setText(transliteration.transliterate(ApplicationContext.applicationLanguage(),
-							ApplicationContext.localLanguage(), primaryField.getText()));
+					TranslitUtil translitUtil = new TranslitUtil();
+					int srcLocale = translitUtil.getSourceLocale();
+					int targetLocale = translitUtil.getTargetLocale();
+
+//					secondaryField.setText(transliteration.transliterate(ApplicationContext.applicationLanguage(),
+//							ApplicationContext.localLanguage(), primaryField.getText()));
+
+					secondaryField.setText(translitUtil.transliterate(srcLocale, targetLocale, primaryField.getText()));
 				} catch (RuntimeException runtimeException) {
 					LOGGER.error(loggerClassName, APPLICATION_NAME, RegistrationConstants.APPLICATION_ID,
 							runtimeException.getMessage());
