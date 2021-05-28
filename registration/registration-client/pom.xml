@@ -71,11 +71,18 @@
 			<version>${openjfx.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>kernel-transliteration-translit-1.1.3</groupId>
+			<artifactId>kernel-transliteration-translit-1.1.3</artifactId>
+			<scope>system</scope>
+			<version>1.0.0</version>
+			<systemPath>${project.basedir}/src/main/resources/translit_lib_sl/kernel-transliteration-translit-1.1.3.jar</systemPath>
+		</dependency>
+		<dependency>
 			<groupId>translit-core-1.0.0</groupId>
 			<artifactId>translit-core-1.0.0</artifactId>
 			<scope>system</scope>
 			<version>1.0.0</version>
-			<systemPath>${project.basedir}/src/main/resources/translit_lib/translit-core-1.0.0.jar</systemPath>
+			<systemPath>${project.basedir}/src/main/resources/translit_lib_sl/translit-core-1.0.0.jar</systemPath>
 		</dependency>
 	</dependencies>
 	<build>

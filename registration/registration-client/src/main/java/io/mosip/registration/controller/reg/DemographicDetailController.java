@@ -20,8 +20,6 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import com.asankha.translit.Transliterate;
-import io.mosip.registration.util.common.TranslitUtil;
 import org.joda.time.LocalDate;
 import org.joda.time.Period;
 import org.joda.time.PeriodType;
@@ -59,7 +57,6 @@ import io.mosip.registration.dto.RequiredOnExpr;
 import io.mosip.registration.dto.ResponseDTO;
 import io.mosip.registration.dto.SuccessResponseDTO;
 import io.mosip.registration.dto.UiSchemaDTO;
-import io.mosip.registration.dto.Validator;
 import io.mosip.registration.dto.mastersync.GenericDto;
 import io.mosip.registration.dto.mastersync.LocationDto;
 import io.mosip.registration.entity.Location;
@@ -138,7 +135,7 @@ public class DemographicDetailController extends BaseController {
 	@Autowired
 	private DocumentScanController documentScanController;
 	@Autowired
-	private Transliteration<String> transliteration;
+	private Transliteration<String> translitUtilImpl;
 	@Autowired
 	private PreRegistrationDataSyncService preRegistrationDataSyncService;
 
@@ -249,7 +246,7 @@ public class DemographicDetailController extends BaseController {
 			validation.setChild(false);
 			lostUIN = false;
 			fxUtils = FXUtils.getInstance();
-			fxUtils.setTransliteration(transliteration);
+			fxUtils.setTransliteration(translitUtilImpl);
 			isChild = false;
 			minAge = Integer.parseInt(getValueFromApplicationContext(RegistrationConstants.MIN_AGE));
 			maxAge = Integer.parseInt(getValueFromApplicationContext(RegistrationConstants.MAX_AGE));
@@ -1933,14 +1930,8 @@ public class DemographicDetailController extends BaseController {
 		if (secondaryField != null) {
 			if (haveToTransliterate) {
 				try {
-					TranslitUtil translitUtil = new TranslitUtil();
-					int srcLocale = translitUtil.getSourceLocale();
-					int targetLocale = translitUtil.getTargetLocale();
-
-//					secondaryField.setText(transliteration.transliterate(ApplicationContext.applicationLanguage(),
-//							ApplicationContext.localLanguage(), primaryField.getText()));
-
-					secondaryField.setText(translitUtil.transliterate(srcLocale, targetLocale, primaryField.getText()));
+					secondaryField.setText(translitUtilImpl.transliterate(ApplicationContext.applicationLanguage(),
+							ApplicationContext.localLanguage(), primaryField.getText()));
 				} catch (RuntimeException runtimeException) {
 					LOGGER.error(loggerClassName, APPLICATION_NAME, RegistrationConstants.APPLICATION_ID,
 							runtimeException.getMessage());
