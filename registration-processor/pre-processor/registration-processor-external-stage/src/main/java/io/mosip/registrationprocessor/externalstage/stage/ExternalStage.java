@@ -4,6 +4,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.mosip.registrationprocessor.externalstage.entity.response.DrpTransactionResponse;
+import io.vertx.core.json.Json;
+import io.vertx.core.json.JsonObject;
+import io.vertx.ext.web.RoutingContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -40,6 +44,9 @@ import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
 
+import static io.mosip.registrationprocessor.externalstage.utils.enums.OperatorFlag.OPERATOR_UNPICK;
+import static io.mosip.registrationprocessor.externalstage.utils.enums.StageFlag.STAGE_INITIATE;
+
 /**
  * External stage verticle class
  *
@@ -65,6 +72,12 @@ public class ExternalStage extends MosipVerticleAPIManager {
 	/** worker pool size. */
 	@Value("${worker.pool.size}")
 	private Integer workerPoolSize;
+
+	/**
+	 * The context path.
+	 */
+	@Value("${server.servlet.path}")
+	private String contextPath;
 
 	@Autowired
 	private AuditLogRequestBuilder auditLogRequestBuilder;
@@ -107,12 +120,61 @@ public class ExternalStage extends MosipVerticleAPIManager {
 	 */
 	@Override
 	public void start() {
-
-		router.setRoute(
-				this.postUrl(vertx, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT));
+		router.setRoute(this.postUrl(vertx, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT));
+		this.routes(router);
 		this.createServer(router.getRouter(), Integer.parseInt(port));
 	}
+	/**
+	 * contains all the routes in this stage
+	 *
+	 * @param router
+	 */
+	private void routes(MosipRouter router) {
+		router.post(contextPath + "/registration");
+		router.get(contextPath + "/registration");
+		router.handler(this::processURL, this::failure);
+	}
 
+	/**
+	 * method to process the context received.
+	 *
+	 * @param ctx the ctx
+	 */
+	public void processURL(RoutingContext ctx) {
+		regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), "", "SecurezoneNotificationStage::processURL()::entry");
+		try {
+			JsonObject obj = ctx.getBodyAsJson();
+			if (obj.getString("apiName").equals("GETS_PENDING_REGISTRATIONS")){
+				ArrayList<DrpTransactionResponse> drpTransactionResponses = new ArrayList<>();
+				DrpTransactionResponse drpTransactionResponse = new DrpTransactionResponse();
+				drpTransactionResponse.setRefId("111111111");
+				drpTransactionResponse.setRid("2222222222222");
+				drpTransactionResponse.setCenterId("1");
+				drpTransactionResponse.setDrpOperator("Haren");
+				drpTransactionResponse.setDataShareUrl("ccxcxcccx");
+				drpTransactionResponse.setOperatorFlag(OPERATOR_UNPICK);
+				drpTransactionResponse.setStageFlag(STAGE_INITIATE);
+				drpTransactionResponses.add(drpTransactionResponse);
+				ctx.response().setStatusCode(200)
+				.putHeader("content-type", "application/json; charset=utf-8")
+				.end(Json.encodePrettily(drpTransactionResponses));
+			}
+
+
+		}catch (Exception e){
+
+		}
+
+	}
+
+	/**
+	 * This is for failure handler
+	 *
+	 * @param routingContext
+	 */
+	private void failure(RoutingContext routingContext) {
+		this.setResponse(routingContext, routingContext.failure().getMessage());
+	}
 	/*
 	 * (non-Javadoc)
 	 * 
