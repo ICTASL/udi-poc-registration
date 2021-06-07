@@ -91,7 +91,7 @@ jobs:
   build_client:
     runs-on: ubuntu-latest
     env:
-      NAMESPACE: mosipdev
+      NAMESPACE: udipoc
       SERVICE_NAME: registration-client
       SERVICE_LOCATION: registration
 
@@ -138,7 +138,7 @@ jobs:
     - name: Build with Maven
       run: |
         cd registration
-        mvn clean install -U -s $GITHUB_WORKSPACE/settings.xml -DskipTests --file pom.xml
+        mvn clean install -U -s $GITHUB_WORKSPACE/settings.xml -DskipTests -Dgpg.skip --file pom.xml
 
     - name: Get version info from pom
       id: getPomVersion
