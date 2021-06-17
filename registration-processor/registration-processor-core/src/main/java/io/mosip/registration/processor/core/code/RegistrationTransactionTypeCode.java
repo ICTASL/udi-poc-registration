@@ -19,6 +19,8 @@ public enum RegistrationTransactionTypeCode {
 	OSI_VALIDATE,
 	/** The external integration. */
 	EXTERNAL_INTEGRATION,
+	/** The external integration. */
+	DRP_INTEGRATION,
 	/** The demographic verification. */
 	DEMOGRAPHIC_VERIFICATION,
 	/** The manual varification. */

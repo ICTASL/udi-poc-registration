@@ -99,6 +99,8 @@ public final class PlatformConstants {
 
 	public static final String RPR_EXTERNAL_STAGE = RPR_REGISTRATION_PROCESSOR_PREFIX + "EX-";
 
+	public static final String RPR_DRP_STAGE = RPR_REGISTRATION_PROCESSOR_PREFIX + "DRP-";
+
 	public static final String RPR_UTIL = RPR_REGISTRATION_PROCESSOR_PREFIX + "UTL-";
 
 	public static final String ABIS = RPR_REGISTRATION_PROCESSOR_PREFIX + "ABIS-";

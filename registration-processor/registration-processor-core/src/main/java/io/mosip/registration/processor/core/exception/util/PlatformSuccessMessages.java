@@ -71,6 +71,8 @@ public enum PlatformSuccessMessages {
 
 	RPR_EXTERNAL_STAGE_SUCCESS(PlatformConstants.RPR_EXTERNAL_STAGE + "000", "External stage  Success"),
 
+	RPR_DRP_STAGE_SUCCESS(PlatformConstants.RPR_DRP_STAGE + "000", "DRP stage  Success"),
+
 	RPR_UIN_GENERATOR_STAGE_SUCCESS(PlatformConstants.RPR_UIN_GENERATOR_STAGE + "000", "UIN Generator  Success"),
 
 	RPR_UIN_DATA_UPDATION_SUCCESS(PlatformConstants.RPR_UIN_GENERATOR_STAGE + "001", "UIN Generator  Success"),
