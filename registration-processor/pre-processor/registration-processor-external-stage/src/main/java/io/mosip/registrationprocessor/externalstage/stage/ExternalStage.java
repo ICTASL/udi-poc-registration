@@ -1,25 +1,10 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
+import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
-import io.mosip.registration.processor.core.constant.RegistrationType;
-import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
-import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
-import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
-import io.vertx.core.json.JsonObject;
-import io.vertx.ext.web.RoutingContext;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
-import io.mosip.kernel.core.exception.ExceptionUtils;
-import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
-import io.mosip.registration.processor.core.exception.ApisResourceAccessException;
+import io.mosip.registration.processor.core.constant.RegistrationType;
 import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages;
 import io.mosip.registration.processor.core.exception.util.PlatformSuccessMessages;
 import io.mosip.registration.processor.core.logger.LogDescription;
@@ -32,8 +17,25 @@ import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequest
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
 import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
+import io.mosip.registration.processor.status.dto.SyncRegistrationDto;
+import io.mosip.registration.processor.status.dto.SyncResponseDto;
+import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
+import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
+import io.mosip.registration.processor.status.service.SyncRegistrationService;
+import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
+import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
+import io.vertx.core.json.JsonObject;
+import io.vertx.ext.web.RoutingContext;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * External stage verticle class
@@ -182,6 +184,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
             messageDTO.setStageFlag(requestJson.getString("stageFlag"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
             messageDTO.setInternalError(Boolean.FALSE);
+            messageDTO.setReg_type(RegistrationType.valueOf(obj.getString("reg_type")));
 
             if (apiName != null && apiName != "" && (apiName.equals(ExternalAPIType.SUCCESS.toString()) || apiName.equals(ExternalAPIType.REJECT.toString()))) {
                 registrationStatusDto = registrationStatusService.getRegistrationStatus(messageDTO.getRid());
@@ -198,14 +201,14 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
                     registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
-                    messageDTO.setIsValid(Boolean.TRUE);
-                    registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_SUCCESS.getMessage());
-                    registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_SUCCESS.getCode());
-                    registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
+                    registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_SUCCESS.getMessage());
+                    registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_SUCCESS.getCode());
+                    registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSED.toString());
 
+                    messageDTO.setIsValid(Boolean.TRUE);
                     isTransactionSuccessful = true;
-                    description.setMessage(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getMessage() + " -- " + messageDTO.getRid());
-                    description.setCode(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode());
+                    description.setMessage(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getMessage() + " -- " + messageDTO.getRid());
+                    description.setCode(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getCode());
 
                     regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
                             LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
@@ -218,56 +221,29 @@ public class ExternalStage extends MosipVerticleAPIManager {
                             "Transaction failed. RID not found in registration table.");
                 }
 
-                if (messageDTO.getIsValid()) {
-                    sendMessage(messageDTO);
-                    this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
-                    regProcLogger.info(obj.getString("rid"),
-                            "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage", null,
-                            null);
-                } else {
-                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been uploaded to file System");
-                    regProcLogger.info(obj.getString("rid"),
-                            "Packet with registrationId '" + messageDTO.getRid() + "' has not been uploaded to file System",
-                            null, null);
-                }
-
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.REJECT.toString())) {
 
                 if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
                     registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
                     registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
-                    registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
-                    messageDTO.setIsValid(Boolean.TRUE);
-                    registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_SUCCESS.getMessage());
-                    registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_SUCCESS.getCode());
-                    registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
-
-                    isTransactionSuccessful = true;
-                    description.setMessage(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getMessage() + " -- " + messageDTO.getRid());
-                    description.setCode(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode());
-
-                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            description.getCode() + description.getMessage());
-
-                    registrationStatusDto.setStatusCode(RegistrationStatusCode.REJECTED.toString());
-                    registrationStatusDto.setStatusComment(
-                            trimMessage.trimExceptionMessage(StatusUtil.PACKET_REJECTED.getMessage()));
-                    registrationStatusDto.setSubStatusCode(StatusUtil.PACKET_REJECTED.getCode());
                     registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.REJECTED.toString());
-                    isTransactionSuccessful = false;
-                    description.setMessage(PlatformErrorMessages.RPR_PVM_PACKET_REJECTED.getMessage());
-                    description.setCode(PlatformErrorMessages.RPR_PVM_PACKET_REJECTED.getCode());
+                    registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_REJECTED.getMessage());
+                    registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_REJECTED.getCode());
+                    registrationStatusDto.setStatusCode(RegistrationStatusCode.REJECTED.toString());
+
+                    description.setMessage(PlatformErrorMessages.DRP_STAGE_REJECTED.getMessage() + " -- " + messageDTO.getRid());
+                    description.setCode(PlatformErrorMessages.DRP_STAGE_REJECTED.getCode());
 
                     regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
                             LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
                             description.getCode() + description.getMessage());
 
-                    messageDTO.setIsValid(Boolean.FALSE);
-                    messageDTO.setInternalError(Boolean.TRUE);
+                    messageDTO.setIsValid(Boolean.TRUE);
+                    messageDTO.setInternalError(Boolean.FALSE);
                     messageDTO.setRid(registrationStatusDto.getRegistrationId());
-                    ctx.fail(0);
+
+
                 } else {
                     isTransactionSuccessful = false;
                     messageDTO.setIsValid(Boolean.FALSE);
@@ -280,7 +256,31 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 messageDTO.setIsValid(Boolean.FALSE);
                 regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
                         LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                        "API Name Invalid");
+                        "Invalid API Name " + apiName);
+            }
+
+            if (messageDTO.getIsValid()) {
+                if (apiName.equals(ExternalAPIType.SUCCESS.toString())) {
+                    sendMessage(messageDTO);
+                    this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
+                    regProcLogger.info(obj.getString("rid"),
+                            "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage", null,
+                            null);
+                } else if (apiName.equals(ExternalAPIType.REJECT.toString())) {
+                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been rejected by DRP user");
+                    regProcLogger.info(obj.getString("rid"),
+                            "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
+                            null, null);
+                } else {
+                    regProcLogger.info(obj.getString("rid"),
+                            "Invalid APITYPE '" + apiName + "' ",
+                            null, null);
+                }
+            } else {
+                this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been forwarded to next stage");
+                regProcLogger.info(obj.getString("rid"),
+                        "Packet with registrationId '" + messageDTO.getRid() + "' has not been forwarded to next stage",
+                        null, null);
             }
 
         } catch (TablenotAccessibleException e) {
@@ -306,30 +306,22 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     ctx.getBodyAsString(), org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e));
             messageDTO.setIsValid(Boolean.FALSE);
             isTransactionSuccessful = false;
-            description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
-            description.setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage());
+            description.setCode(PlatformErrorMessages.DRP_STAGE_FAILED.getCode());
+            description.setMessage(PlatformErrorMessages.DRP_STAGE_FAILED.getMessage());
             ctx.fail(e);
         } finally {
-            if (messageDTO.getInternalError()) {
-                registrationStatusDto.setUpdatedBy(USER);
-                int retryCount = registrationStatusDto.getRetryCount() != null
-                        ? registrationStatusDto.getRetryCount() + 1
-                        : 1;
-                registrationStatusDto.setRetryCount(retryCount);
-            }
-
             if (!apiName.equals(ExternalAPIType.LIST.toString())) {
                 /** Module-Id can be Both Success/Error code */
                 String moduleId = isTransactionSuccessful
-                        ? PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode()
+                        ? PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getCode()
                         : description.getCode();
-                String moduleName = ModuleName.EXTERNAL.toString();
+                String moduleName = ModuleName.DRP.toString();
                 registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
                 if (isTransactionSuccessful)
-                    description.setMessage(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getMessage());
+                    description.setMessage(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getMessage());
                 String eventId = isTransactionSuccessful ? EventId.RPR_401.toString()
                         : EventId.RPR_405.toString();
-                String eventName = isTransactionSuccessful ? EventName.GET.toString()
+                String eventName = isTransactionSuccessful ? EventName.UPDATE.toString()
                         : EventName.EXCEPTION.toString();
                 String eventType = isTransactionSuccessful ? EventType.BUSINESS.toString()
                         : EventType.SYSTEM.toString();
@@ -355,18 +347,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      * @param messageDTO the message DTO
      */
     public void sendMessage(MessageDTO messageDTO) {
-        this.send(this.mosipEventBus, MessageBusAddress.SECUREZONE_NOTIFICATION_OUT, messageDTO);
-    }
-
-
-    /**
-     * This should implement with default flow.
-     * which means initial data saving part should done from this block
-     */
-    @Override
-    public MessageDTO process(MessageDTO object) {
-        System.out.println("Default Flow");
-        return null;
+        this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
     }
 
     private List populateListApiResponseMock() {
@@ -383,5 +364,112 @@ public class ExternalStage extends MosipVerticleAPIManager {
             arrayList.add(listAPIResponseDTO);
         }
         return arrayList;
+    }
+
+    /**
+     * This should implement with default flow.
+     * which means initial data saving part should done from this block
+     */
+    @Override
+    public MessageDTO process(MessageDTO object) {
+
+        TrimExceptionMessage trimExceptionMsg = new TrimExceptionMessage();
+
+        boolean isTransactionSuccessful = false;
+        String registrationId = object.getRid();
+        object.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
+        regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                registrationId, "ExternalStage::process()::entry");
+        InternalRegistrationStatusDto registrationStatusDto = registrationStatusService
+                .getRegistrationStatus(registrationId);
+        MessageRequestDTO requestdto = new MessageRequestDTO();
+        requestdto.setId(ID);
+        List<String> list = new ArrayList<String>();
+        list.add(object.getRid());
+        requestdto.setRequest(list);
+        requestdto.setRequesttime(LocalDateTime.now().toString());
+        requestdto.setVersion(VERSION);
+        isTransactionSuccessful = false;
+        try {
+            registrationStatusDto
+                    .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
+            registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
+
+            Boolean temp = true;
+
+//            registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
+            System.out.println("DB Insert");
+
+            regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                    "",
+                    "ExternalStage::process():: EIS service Api call  ended with response data : " + temp.toString());
+            if (temp) {
+                registrationStatusDto
+                        .setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
+                registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_SUCCESS.getMessage());
+                registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_SUCCESS.getCode());
+                registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
+                object.setIsValid(true);
+                object.setInternalError(false);
+                isTransactionSuccessful = true;
+                description.setMessage(
+                        PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getMessage() + " -- " + registrationId);
+                description.setCode(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode());
+
+            } else {
+                registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
+                        .getStatusCode(RegistrationExceptionTypeCode.EXTERNAL_INTEGRATION_FAILED));
+                registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_FAILED.getMessage());
+                registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_FAILED.getCode());
+                registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
+                object.setIsValid(false);
+                object.setInternalError(false);
+                description
+                        .setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage() + " -- " + registrationId);
+                description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
+            }
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                    registrationId, description.getMessage());
+        } catch (Exception e) {
+            registrationStatusDto.setStatusComment(
+                    trimExceptionMsg.trimExceptionMessage(StatusUtil.UNKNOWN_EXCEPTION_OCCURED + e.getMessage()));
+            registrationStatusDto.setSubStatusCode(StatusUtil.UNKNOWN_EXCEPTION_OCCURED.getCode());
+            registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
+            registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
+                    .getStatusCode(RegistrationExceptionTypeCode.UNEXCEPTED_ERROR));
+            description.setCode(PlatformErrorMessages.RPR_BDD_UNKNOWN_EXCEPTION.getCode());
+            description.setMessage(PlatformErrorMessages.RPR_BDD_UNKNOWN_EXCEPTION.getMessage());
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), description.getCode(), registrationId,
+                    description.getMessage() + e.getMessage() + ExceptionUtils.getStackTrace(e));
+            object.setInternalError(true);
+            object.setIsValid(false);
+        } finally {
+
+            if (object.getInternalError()) {
+                registrationStatusDto.setUpdatedBy(USER);
+                int retryCount = registrationStatusDto.getRetryCount() != null
+                        ? registrationStatusDto.getRetryCount() + 1
+                        : 1;
+
+                registrationStatusDto.setRetryCount(retryCount);
+            }
+            /** Module-Id can be Both Succes/Error code */
+            String moduleId = isTransactionSuccessful ? PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode()
+                    : description.getCode();
+            String moduleName = ModuleName.EXTERNAL.toString();
+            registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
+            if (isTransactionSuccessful) {
+                description.setMessage(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getMessage());
+                description.setCode(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getCode());
+            }
+            String eventId = isTransactionSuccessful ? EventId.RPR_402.toString() : EventId.RPR_405.toString();
+            String eventName = isTransactionSuccessful ? EventName.UPDATE.toString() : EventName.EXCEPTION.toString();
+            String eventType = isTransactionSuccessful ? EventType.BUSINESS.toString() : EventType.SYSTEM.toString();
+
+            auditLogRequestBuilder.createAuditRequestBuilder(description.getMessage(), eventId, eventName, eventType,
+                    moduleId, moduleName, registrationId);
+        }
+
+        return object;
     }
 }

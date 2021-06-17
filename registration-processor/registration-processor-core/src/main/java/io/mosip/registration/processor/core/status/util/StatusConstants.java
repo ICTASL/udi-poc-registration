@@ -49,6 +49,11 @@ public final class StatusConstants {
 	public static final String EXTERNAL_SATGE_MODULE_SUCCESS = EXTERNAL_SATGE_MODULE + SUCCESS;
 	public static final String EXTERNAL_SATGE_MODULE_FAILED = EXTERNAL_SATGE_MODULE + FAILED;
 
+	// DRP stage
+	public static final String DRP_SATGE_MODULE = RPR_REGISTRATION_PROCESSOR_PREFIX + "DRP-";
+	public static final String DRP_SATGE_MODULE_SUCCESS = DRP_SATGE_MODULE + SUCCESS;
+	public static final String DRP_SATGE_MODULE_FAILED = DRP_SATGE_MODULE + FAILED;
+
 	// OSI Validator stage
 	public static final String OSI_VALIDAOR_MODULE = RPR_REGISTRATION_PROCESSOR_PREFIX + "OSI-";
 	public static final String OSI_VALIDAOR_MODULE_SUCCESS = OSI_VALIDAOR_MODULE + SUCCESS;
