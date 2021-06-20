@@ -13,6 +13,7 @@ import io.mosip.registration.processor.core.spi.restclient.RegistrationProcessor
 import io.mosip.registration.processor.core.status.util.StatusUtil;
 import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
+import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
 import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequestBuilder;
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
@@ -23,19 +24,25 @@ import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.service.SyncRegistrationService;
+import io.mosip.registrationprocessor.externalstage.DrpDto;
 import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
+import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import io.mosip.registration.processor.packet.storage.utils.Utilities;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * External stage verticle class
@@ -91,6 +98,9 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Autowired
     private RegistrationStatusService<String, InternalRegistrationStatusDto, RegistrationStatusDto> registrationStatusService;
 
+    @Autowired
+    private DrpService<DrpDto> drpService;
+
     /**
      * rest client to send requests.
      */
@@ -122,6 +132,15 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     @Autowired
     RegistrationExceptionMapperUtil registrationStatusMapperUtil;
+
+    @Autowired
+    private IdRepoService idRepoService;
+
+    /**
+     * The utilities.
+     */
+    @Autowired
+    Utilities utilities;
 
     /**
      * method to deploy external stage verticle
@@ -162,6 +181,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 "ExternalStage::processURL()::entry");
 
         InternalRegistrationStatusDto registrationStatusDto = new InternalRegistrationStatusDto();
+        DrpDto drpDto = new DrpDto();
         MessageDRPrequestDTO messageDTO = new MessageDRPrequestDTO();
 
         String apiName = "";
@@ -186,15 +206,32 @@ public class ExternalStage extends MosipVerticleAPIManager {
             messageDTO.setInternalError(Boolean.FALSE);
             messageDTO.setReg_type(RegistrationType.valueOf(obj.getString("reg_type")));
 
-            if (apiName != null && apiName != "" && (apiName.equals(ExternalAPIType.SUCCESS.toString()) || apiName.equals(ExternalAPIType.REJECT.toString()))) {
+            if (apiName != null && apiName != "" && !apiName.equals(ExternalAPIType.LIST.toString())) {
                 registrationStatusDto = registrationStatusService.getRegistrationStatus(messageDTO.getRid());
             }
 
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
+                isTransactionSuccessful = false;
+                messageDTO.setIsValid(Boolean.TRUE);
                 ListAPIResponseDTO listAPIResponseDTO = new ListAPIResponseDTO();
-                List<ListAPIResponseDTO> list = populateListApiResponseMock();
-                this.setResponse(ctx, list);
+                List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
+//                List<ListAPIResponseDTO> list = populateListApiResponseMock();
+                this.setResponse(ctx, drpDtoList);
+            } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.RIDDETAILS.toString())) {
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.TRUE);
+                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
+                            utilities.getGetRegProcessorDemographicIdentity());
+                    this.setResponse(ctx, matchedDemographicIdentity);
+                } else {
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.FALSE);
+                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                            "Transaction failed. RID not found in registration table.");
+                }
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.SUCCESS.toString())) {
                 if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
                     registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
@@ -310,13 +347,22 @@ public class ExternalStage extends MosipVerticleAPIManager {
             description.setMessage(PlatformErrorMessages.DRP_STAGE_FAILED.getMessage());
             ctx.fail(e);
         } finally {
-            if (!apiName.equals(ExternalAPIType.LIST.toString())) {
+            if (apiName.equals(ExternalAPIType.SUCCESS.toString()) || apiName.equals(ExternalAPIType.REJECT.toString())) {
                 /** Module-Id can be Both Success/Error code */
                 String moduleId = isTransactionSuccessful
                         ? PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getCode()
                         : description.getCode();
                 String moduleName = ModuleName.DRP.toString();
                 registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
+                drpDto.setDrpId("11111");
+                drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
+                drpDto.setStageFlag("PENDING");
+                drpDto.setOperatorFlag("APPROVED");
+                drpDto.setStatusComment("APPROVED");
+                drpDto.setActive(Boolean.TRUE);
+                drpDto.setCenterId("CENTER1");
+                drpDto.setOperatorId("OPERATOR1");
+                drpService.addDrpTransaction(drpDto);
                 if (isTransactionSuccessful)
                     description.setMessage(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getMessage());
                 String eventId = isTransactionSuccessful ? EventId.RPR_401.toString()
@@ -383,6 +429,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
         InternalRegistrationStatusDto registrationStatusDto = registrationStatusService
                 .getRegistrationStatus(registrationId);
         MessageRequestDTO requestdto = new MessageRequestDTO();
+        DrpDto drpDto = new DrpDto();
         requestdto.setId(ID);
         List<String> list = new ArrayList<String>();
         list.add(object.getRid());
@@ -395,10 +442,16 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
             registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
-            Boolean temp = true;
+            Boolean temp = false;
 
-//            registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
-            System.out.println("DB Insert");
+            drpDto.setDrpId(generateId());
+            drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
+            drpDto.setStageFlag("PENDING");
+            drpDto.setActive(Boolean.TRUE);
+            drpDto.setCenterId("CENTER1");
+            drpDto.setOperatorId("OPERATOR1");
+            drpService.addDrpTransaction(drpDto);
+            temp = true;
 
             regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                     "",
@@ -471,5 +524,9 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
 
         return object;
+    }
+
+    public String generateId() {
+        return UUID.randomUUID().toString();
     }
 }

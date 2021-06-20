@@ -13,6 +13,11 @@ public enum ExternalAPIType {
     LIST,
 
     /**
+     * Get RID Geographic Data.
+     */
+    RIDDETAILS,
+
+    /**
      * Submit Success Requests
      */
     SUCCESS,
