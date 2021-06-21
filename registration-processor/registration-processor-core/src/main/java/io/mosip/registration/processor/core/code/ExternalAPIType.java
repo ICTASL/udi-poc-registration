@@ -13,9 +13,9 @@ public enum ExternalAPIType {
     LIST,
 
     /**
-     * Get RID Geographic Data.
+     * Get RID demographic Data.
      */
-    RIDDETAILS,
+    GETDATA,
 
     /**
      * Submit Success Requests
@@ -26,5 +26,15 @@ public enum ExternalAPIType {
      * Submit REJECTED Requests.
      */
     REJECT,
+
+    /**
+     * Get Submit Operator picked RID.
+     */
+    PICK,
+
+    /**
+     * Get Submit Operator unpicked RID.
+     */
+    UNPICK,
 
 }

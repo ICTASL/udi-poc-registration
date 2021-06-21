@@ -24,6 +24,9 @@ public class MessageDRPrequestDTO extends MessageDTO {
 	/** The Request stage Flag */
 	private String stageFlag;
 
+	/** The status comment - Reject Reason*/
+	private String statusComment;
+
 	/** The Max Limit */
 	private Integer maxLimit;
 

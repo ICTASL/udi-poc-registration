@@ -29,6 +29,7 @@ import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
+import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -205,6 +206,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
             messageDTO.setInternalError(Boolean.FALSE);
             messageDTO.setReg_type(RegistrationType.valueOf(obj.getString("reg_type")));
+            messageDTO.setStatusComment(requestJson.getString("statusComment"));
 
             if (apiName != null && apiName != "" && !apiName.equals(ExternalAPIType.LIST.toString())) {
                 registrationStatusDto = registrationStatusService.getRegistrationStatus(messageDTO.getRid());
@@ -221,7 +223,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
 //                List<ListAPIResponseDTO> list = populateListApiResponseMock();
                 this.setResponse(ctx, drpDtoList);
-            } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.RIDDETAILS.toString())) {
+            } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.GETDATA.toString())) {
                 if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
                         && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
                     isTransactionSuccessful = false;
@@ -229,6 +231,42 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
                             utilities.getGetRegProcessorDemographicIdentity());
                     this.setResponse(ctx, matchedDemographicIdentity);
+                } else {
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.FALSE);
+                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                            "Transaction failed. RID not found in registration table.");
+                }
+            } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.PICK.toString())) {
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())
+                        && drpDto.getOperatorFlag() != null && drpDto.getOperatorFlag().equals(DrpOperatorStageCode.DEFAULT.toString())) {
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.TRUE);
+
+                    drpDto.setOperatorFlag(DrpOperatorStageCode.PICK.toString());
+                    drpDto.setActive(Boolean.TRUE);
+                    drpDto.setCenterId(messageDTO.getCenterId());
+                    drpDto.setOperatorId(messageDTO.getOperatorId());
+                } else {
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.FALSE);
+                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                            "Transaction failed. RID not found in registration table.");
+                }
+            } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.UNPICK.toString())) {
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())
+                        && drpDto.getOperatorFlag() != null && drpDto.getOperatorFlag().equals(DrpOperatorStageCode.PICK.toString())) {
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.TRUE);
+
+                    drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
+                    drpDto.setActive(Boolean.TRUE);
+                    drpDto.setCenterId(messageDTO.getCenterId());
+                    drpDto.setOperatorId(messageDTO.getOperatorId());
                 } else {
                     isTransactionSuccessful = false;
                     messageDTO.setIsValid(Boolean.FALSE);
@@ -249,7 +287,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
                     drpDto.setStageFlag(RegistrationStatusCode.PROCESSED.toString());
                     drpDto.setOperatorFlag(RegistrationStatusCode.PROCESSED.toString());
-                    drpDto.setStatusComment(RegistrationStatusCode.PROCESSED.toString());
+                    drpDto.setStatusComment(messageDTO.getStatusComment());
                     drpDto.setActive(Boolean.TRUE);
                     drpDto.setCenterId(messageDTO.getCenterId());
                     drpDto.setOperatorId(messageDTO.getOperatorId());
@@ -284,7 +322,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
                     drpDto.setStageFlag(RegistrationStatusCode.REJECTED.toString());
                     drpDto.setOperatorFlag(RegistrationStatusCode.REJECTED.toString());
-                    drpDto.setStatusComment(RegistrationStatusCode.REJECTED.toString());
+                    drpDto.setStatusComment(messageDTO.getStatusComment());
                     drpDto.setActive(Boolean.TRUE);
                     drpDto.setCenterId(messageDTO.getCenterId());
                     drpDto.setOperatorId(messageDTO.getOperatorId());
@@ -327,6 +365,16 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been rejected by DRP user");
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
+                            null, null);
+                }  else if (apiName.equals(ExternalAPIType.PICK.toString())) {
+                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as PiCK by DRP user");
+                    regProcLogger.info(obj.getString("rid"),
+                            "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as PiCK by DRP user",
+                            null, null);
+                }  else if (apiName.equals(ExternalAPIType.UNPICK.toString())) {
+                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as UNPiCK by DRP user");
+                    regProcLogger.info(obj.getString("rid"),
+                            "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user",
                             null, null);
                 } else {
                     regProcLogger.info(obj.getString("rid"),
@@ -386,6 +434,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
                 auditLogRequestBuilder.createAuditRequestBuilder(description.getMessage(), eventId, eventName, eventType,
                         moduleId, moduleName, messageDTO.getRid());
+            } else if (apiName.equals(ExternalAPIType.PICK.toString()) || apiName.equals(ExternalAPIType.UNPICK.toString())) {
+                drpService.updateDrpTransaction(drpDto);
             }
         }
     }
@@ -440,14 +490,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 registrationId, "ExternalStage::process()::entry");
         InternalRegistrationStatusDto registrationStatusDto = registrationStatusService
                 .getRegistrationStatus(registrationId);
-        MessageRequestDTO requestdto = new MessageRequestDTO();
         DrpDto drpDto = new DrpDto();
-        requestdto.setId(ID);
-        List<String> list = new ArrayList<String>();
-        list.add(object.getRid());
-        requestdto.setRequest(list);
-        requestdto.setRequesttime(LocalDateTime.now().toString());
-        requestdto.setVersion(VERSION);
         isTransactionSuccessful = false;
         try {
             registrationStatusDto
@@ -458,7 +501,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
             drpDto.setDrpId(generateId());
             drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
-            drpDto.setStageFlag("PENDING");
+            drpDto.setStageFlag(RegistrationStatusCode.PROCESSING.toString());
+            drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
             drpDto.setActive(Boolean.TRUE);
             drpDto.setCenterId("CENTER1");
             drpDto.setOperatorId("OPERATOR1");
