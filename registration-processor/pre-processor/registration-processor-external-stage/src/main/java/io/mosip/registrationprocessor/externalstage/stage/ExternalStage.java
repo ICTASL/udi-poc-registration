@@ -208,8 +208,11 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
             if (apiName != null && apiName != "" && !apiName.equals(ExternalAPIType.LIST.toString())) {
                 registrationStatusDto = registrationStatusService.getRegistrationStatus(messageDTO.getRid());
+                List<DrpDto> drpDtoList = drpService.getDrpEntryByRegId(messageDTO.getRid());
+                if (drpDtoList != null && !drpDtoList.isEmpty() && drpDtoList.get(0) != null) {
+                    drpDto = drpDtoList.get(0);
+                }
             }
-
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
                 isTransactionSuccessful = false;
@@ -219,7 +222,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
 //                List<ListAPIResponseDTO> list = populateListApiResponseMock();
                 this.setResponse(ctx, drpDtoList);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.RIDDETAILS.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
                     isTransactionSuccessful = false;
                     messageDTO.setIsValid(Boolean.TRUE);
                     JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
@@ -233,7 +237,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
                             "Transaction failed. RID not found in registration table.");
                 }
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.SUCCESS.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
                     registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
                     registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
@@ -241,6 +246,13 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_SUCCESS.getMessage());
                     registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_SUCCESS.getCode());
                     registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSED.toString());
+
+                    drpDto.setStageFlag(RegistrationStatusCode.PROCESSED.toString());
+                    drpDto.setOperatorFlag(RegistrationStatusCode.PROCESSED.toString());
+                    drpDto.setStatusComment(RegistrationStatusCode.PROCESSED.toString());
+                    drpDto.setActive(Boolean.TRUE);
+                    drpDto.setCenterId(messageDTO.getCenterId());
+                    drpDto.setOperatorId(messageDTO.getOperatorId());
 
                     messageDTO.setIsValid(Boolean.TRUE);
                     isTransactionSuccessful = true;
@@ -260,7 +272,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.REJECT.toString())) {
 
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
                     registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
                     registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
@@ -268,6 +281,13 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_REJECTED.getMessage());
                     registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_REJECTED.getCode());
                     registrationStatusDto.setStatusCode(RegistrationStatusCode.REJECTED.toString());
+
+                    drpDto.setStageFlag(RegistrationStatusCode.REJECTED.toString());
+                    drpDto.setOperatorFlag(RegistrationStatusCode.REJECTED.toString());
+                    drpDto.setStatusComment(RegistrationStatusCode.REJECTED.toString());
+                    drpDto.setActive(Boolean.TRUE);
+                    drpDto.setCenterId(messageDTO.getCenterId());
+                    drpDto.setOperatorId(messageDTO.getOperatorId());
 
                     description.setMessage(PlatformErrorMessages.DRP_STAGE_REJECTED.getMessage() + " -- " + messageDTO.getRid());
                     description.setCode(PlatformErrorMessages.DRP_STAGE_REJECTED.getCode());
@@ -354,15 +374,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                         : description.getCode();
                 String moduleName = ModuleName.DRP.toString();
                 registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
-                drpDto.setDrpId("11111");
-                drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
-                drpDto.setStageFlag("PENDING");
-                drpDto.setOperatorFlag("APPROVED");
-                drpDto.setStatusComment("APPROVED");
-                drpDto.setActive(Boolean.TRUE);
-                drpDto.setCenterId("CENTER1");
-                drpDto.setOperatorId("OPERATOR1");
-                drpService.addDrpTransaction(drpDto);
+                drpService.updateDrpTransaction(drpDto);
                 if (isTransactionSuccessful)
                     description.setMessage(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getMessage());
                 String eventId = isTransactionSuccessful ? EventId.RPR_401.toString()
