@@ -7,6 +7,10 @@ import java.util.List;
 
 public interface DrpService<U> {
     public DrpEntity addDrpTransaction(U DrpDto);
+
+    public DrpEntity updateDrpTransaction(U DrpDto);
+
     public List<DrpDto> getRIDList(U DrpDto);
 
+    public List<DrpDto> getDrpEntryByRegId(String registrationId);
 }

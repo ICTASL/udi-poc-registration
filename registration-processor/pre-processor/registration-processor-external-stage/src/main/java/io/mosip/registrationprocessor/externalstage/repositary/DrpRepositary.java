@@ -3,6 +3,7 @@ package io.mosip.registrationprocessor.externalstage.repositary;
 import io.mosip.kernel.core.dataaccess.spi.repository.BaseRepository;
 import io.mosip.registrationprocessor.externalstage.entity.DrpEntity;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -11,4 +12,7 @@ import java.util.List;
 public interface DrpRepositary<T extends DrpEntity, E> extends BaseRepository<T, E> {
     @Query("SELECT d FROM DrpEntity d WHERE d.stageFlag='PENDING' and d.isDeleted IS NULL and d.isActive=TRUE ")
     public List<DrpEntity> getRIDList();
+
+    @Query("SELECT d FROM DrpEntity d WHERE d.registrationId=:registrationId and d.isDeleted IS NULL and d.isActive=TRUE ")
+    public List<DrpEntity> getDrpEntryByRegId(@Param("registrationId") String registrationId);
 }
