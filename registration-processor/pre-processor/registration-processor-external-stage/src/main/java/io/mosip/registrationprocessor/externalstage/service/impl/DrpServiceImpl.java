@@ -5,11 +5,13 @@ import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
 import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages;
 import io.mosip.registration.processor.core.logger.RegProcessorLogger;
+import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.exception.TransactionTableNotAccessibleException;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
 import io.mosip.registrationprocessor.externalstage.entity.DrpEntity;
 import io.mosip.registrationprocessor.externalstage.repositary.DrpRepositary;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
+import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -69,7 +71,7 @@ public class DrpServiceImpl implements DrpService<DrpDto> {
                     drpDto.getRegistrationId(),
                     "DrpServiceImpl::addDrpTransaction()::entry");
             DrpEntity entity = convertDtoToEntity(drpDto);
-            List<DrpEntity> drpEntityList = drpRepositary.getRIDList();
+            List<DrpEntity> drpEntityList = drpRepositary.getRIDList(RegistrationStatusCode.PROCESSING.toString(), DrpOperatorStageCode.DEFAULT.toString());
             if (!CollectionUtils.isEmpty(drpEntityList)) {
                 for (DrpEntity drpEntity : drpEntityList) {
                     drpDto = convertEntityToDto(drpEntity);
