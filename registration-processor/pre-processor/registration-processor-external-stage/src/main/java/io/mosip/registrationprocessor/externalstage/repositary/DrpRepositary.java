@@ -11,7 +11,7 @@ import java.util.List;
 @Repository
 public interface DrpRepositary<T extends DrpEntity, E> extends BaseRepository<T, E> {
     @Query("SELECT d FROM DrpEntity d WHERE d.stageFlag=:stageFlag  and d.operatorFlag=:operatorFlag and d.isDeleted IS NULL and d.isActive=TRUE ")
-    public List<DrpEntity> getRIDList(@Param("stageFlag") String stageFlag, @Param("stageFlag") String operatorFlag);
+    public List<DrpEntity> getRIDList(@Param("stageFlag") String stageFlag, @Param("operatorFlag") String operatorFlag);
 
     @Query("SELECT d FROM DrpEntity d WHERE d.registrationId=:registrationId and d.isDeleted IS NULL and d.isActive=TRUE ")
     public List<DrpEntity> getDrpEntryByRegId(@Param("registrationId") String registrationId);
