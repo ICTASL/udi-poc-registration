@@ -18,16 +18,11 @@ import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequest
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
 import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
-import io.mosip.registration.processor.status.dto.SyncRegistrationDto;
-import io.mosip.registration.processor.status.dto.SyncResponseDto;
-import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
-import io.mosip.registration.processor.status.service.SyncRegistrationService;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
 import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
-import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
 import io.vertx.core.json.Json;
@@ -41,10 +36,7 @@ import org.springframework.stereotype.Service;
 
 import io.mosip.registration.processor.packet.storage.utils.Utilities;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * External stage verticle class
@@ -218,20 +210,20 @@ public class ExternalStage extends MosipVerticleAPIManager {
             }
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
+                List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
+                setResponse(ctx, drpDtoList);
                 isTransactionSuccessful = false;
                 messageDTO.setIsValid(Boolean.TRUE);
-                ListAPIResponseDTO listAPIResponseDTO = new ListAPIResponseDTO();
-                List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
-//                List<ListAPIResponseDTO> list = populateListApiResponseMock();
-                setResponse(ctx, drpDtoList);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.GETDATA.toString())) {
                 if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
                         && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.TRUE);
                     JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
                             utilities.getGetRegProcessorDemographicIdentity());
-                    this.setResponse(ctx, matchedDemographicIdentity);
+                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
+                    convertedObject.put("rid", messageDTO.getRid());
+                    setResponse(ctx, convertedObject);
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.TRUE);
                 } else {
                     isTransactionSuccessful = false;
                     messageDTO.setIsValid(Boolean.FALSE);
@@ -441,6 +433,87 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
     }
 
+    private Map convertGetDataObject(JSONObject matchedDemographicIdentity) {
+        Map dataMap = new HashMap<String, String>();
+        try {
+            dataMap.put("profession", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("profession")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("profession", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("gender", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("gender")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("gender", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("fullName", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("fullName")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("fullName", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("postalCode", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("postalCode")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("postalCode", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("province", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("province")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("province", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("district", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("district")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("district", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("city", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("city")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("city", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("addressLine1", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine1")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("addressLine1", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("addressLine2", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine2")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("addressLine2", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("residenceStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("residenceStatus")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("residenceStatus", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("maritalStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("maritalStatus")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("maritalStatus", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("dateOfBirth", (String) matchedDemographicIdentity.get("dateOfBirth").toString());
+        } catch (Exception e) {
+            dataMap.put("dateOfBirth", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("phone", (String) matchedDemographicIdentity.get("phone").toString());
+        } catch (Exception e) {
+            dataMap.put("phone", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("nationalIdentityNumber", (String) matchedDemographicIdentity.get("nationalIdentityNumber").toString());
+        } catch (Exception e) {
+            dataMap.put("nationalIdentityNumber", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("email", (String) matchedDemographicIdentity.get("email").toString());
+        } catch (Exception e) {
+            dataMap.put("email", "Error When Fetching Data");
+        }
+        return dataMap;
+
+    }
+
     /**
      * This is for failure handler
      *
@@ -590,6 +663,12 @@ public class ExternalStage extends MosipVerticleAPIManager {
     public void setResponse(RoutingContext ctx, Object object) {
         ctx.response().putHeader("content-type", "application/json").putHeader("Access-Control-Allow-Origin", "*")
                 .putHeader("Access-Control-Allow-Methods", "GET, POST").setStatusCode(200)
+                .end(Json.encodePrettily(object));
+    }
+
+    public void setErrorResponse(RoutingContext ctx, Object object) {
+        ctx.response().putHeader("content-type", "application/json").putHeader("Access-Control-Allow-Origin", "*")
+                .putHeader("Access-Control-Allow-Methods", "GET, POST").setStatusCode(400)
                 .end(Json.encodePrettily(object));
     }
 }
