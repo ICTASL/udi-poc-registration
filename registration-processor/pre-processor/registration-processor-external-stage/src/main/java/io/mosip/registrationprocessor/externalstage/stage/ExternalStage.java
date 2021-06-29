@@ -30,6 +30,7 @@ import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import org.apache.commons.lang3.exception.ExceptionUtils;
@@ -222,7 +223,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 ListAPIResponseDTO listAPIResponseDTO = new ListAPIResponseDTO();
                 List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
 //                List<ListAPIResponseDTO> list = populateListApiResponseMock();
-                this.setResponse(ctx, drpDtoList);
+                setResponse(ctx, drpDtoList);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.GETDATA.toString())) {
                 if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
                         && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
@@ -366,12 +367,12 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
                             null, null);
-                }  else if (apiName.equals(ExternalAPIType.PICK.toString())) {
+                } else if (apiName.equals(ExternalAPIType.PICK.toString())) {
                     this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as PiCK by DRP user");
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as PiCK by DRP user",
                             null, null);
-                }  else if (apiName.equals(ExternalAPIType.UNPICK.toString())) {
+                } else if (apiName.equals(ExternalAPIType.UNPICK.toString())) {
                     this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as UNPiCK by DRP user");
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user",
@@ -584,5 +585,11 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     public String generateId() {
         return UUID.randomUUID().toString();
+    }
+
+    public void setResponse(RoutingContext ctx, Object object) {
+        ctx.response().putHeader("content-type", "application/json").putHeader("Access-Control-Allow-Origin", "*")
+                .putHeader("Access-Control-Allow-Methods", "GET, POST").setStatusCode(200)
+                .end(Json.encodePrettily(object));
     }
 }
