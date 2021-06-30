@@ -191,16 +191,17 @@ public class ExternalStage extends MosipVerticleAPIManager {
             messageDTO.setApiName(obj.getString("apiName"));
             messageDTO.setRid(obj.getString("rid"));
             messageDTO.setIsValid(obj.getBoolean("isValid"));
-            messageDTO.setOperatorId(requestJson.getString("operatorId"));
-            messageDTO.setCenterId(requestJson.getString("centerId"));
-            messageDTO.setMaxLimit(requestJson.getInteger("maxLimit"));
-            messageDTO.setOperatorFlag(requestJson.getString("operatorFlag"));
-            messageDTO.setStageFlag(requestJson.getString("stageFlag"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
             messageDTO.setInternalError(Boolean.FALSE);
             messageDTO.setReg_type(RegistrationType.valueOf(obj.getString("reg_type")));
-            messageDTO.setStatusComment(requestJson.getString("statusComment"));
-
+            if (requestJson != null) {
+                messageDTO.setOperatorId(requestJson.getString("operatorId"));
+                messageDTO.setCenterId(requestJson.getString("centerId"));
+                messageDTO.setMaxLimit(requestJson.getInteger("maxLimit"));
+                messageDTO.setOperatorFlag(requestJson.getString("operatorFlag"));
+                messageDTO.setStageFlag(requestJson.getString("stageFlag"));
+                messageDTO.setStatusComment(requestJson.getString("statusComment"));
+            }
             if (apiName != null && apiName != "" && !apiName.equals(ExternalAPIType.LIST.toString())) {
                 registrationStatusDto = registrationStatusService.getRegistrationStatus(messageDTO.getRid());
                 List<DrpDto> drpDtoList = drpService.getDrpEntryByRegId(messageDTO.getRid());
@@ -369,13 +370,16 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user",
                             null, null);
+                } else if (apiName.equals(ExternalAPIType.GETDATA.toString())) {
+                } else if (apiName.equals(ExternalAPIType.LIST.toString())) {
                 } else {
-                    regProcLogger.info(obj.getString("rid"),
-                            "Invalid APITYPE '" + apiName + "' ",
-                            null, null);
+                    setErrorResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' Invalid API Name");
+                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                            "Invalid API Name " + apiName);
                 }
             } else {
-                this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been forwarded to next stage");
+                setErrorResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been forwarded to next stage");
                 regProcLogger.info(obj.getString("rid"),
                         "Packet with registrationId '" + messageDTO.getRid() + "' has not been forwarded to next stage",
                         null, null);
@@ -564,28 +568,38 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 registrationId, "ExternalStage::process()::entry");
         InternalRegistrationStatusDto registrationStatusDto = registrationStatusService
                 .getRegistrationStatus(registrationId);
-        DrpDto drpDto = new DrpDto();
-        isTransactionSuccessful = false;
+        DrpDto drpDto = null;
         try {
             registrationStatusDto
                     .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
             registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
             Boolean temp = false;
-
-            drpDto.setDrpId(generateId());
-            drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
-            drpDto.setStageFlag(RegistrationStatusCode.PROCESSING.toString());
-            drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
-            drpDto.setActive(Boolean.TRUE);
-            drpDto.setCenterId("CENTER1");
-            drpDto.setOperatorId("OPERATOR1");
-            drpService.addDrpTransaction(drpDto);
-            temp = true;
-
+            if (registrationStatusDto != null && registrationId.equals(registrationStatusDto.getRegistrationId())) {
+                List<DrpDto> drpDtoList = drpService.getDrpEntryByRegId(registrationId);
+                if (drpDtoList != null && !drpDtoList.isEmpty() && drpDtoList.get(0) != null) {
+                    drpDto = drpDtoList.get(0);
+                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                            "",
+                            "ExternalStage::process():: Rid Already exist in DRP table : " + drpDto.toString());
+                }
+            }
+            if (drpDto == null) {
+                drpDto = new DrpDto();
+                drpDto.setDrpId(generateId());
+                drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
+                drpDto.setStageFlag(RegistrationStatusCode.PROCESSING.toString());
+                drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
+                drpDto.setActive(Boolean.TRUE);
+                drpDto.setCenterId("CENTER1");
+                drpDto.setOperatorId("OPERATOR1");
+                drpService.addDrpTransaction(drpDto);
+                temp = true;
+            }
             regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                     "",
                     "ExternalStage::process():: EIS service Api call  ended with response data : " + temp.toString());
+
             if (temp) {
                 registrationStatusDto
                         .setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
@@ -641,6 +655,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     : description.getCode();
             String moduleName = ModuleName.EXTERNAL.toString();
             registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
+
             if (isTransactionSuccessful) {
                 description.setMessage(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getMessage());
                 description.setCode(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getCode());
