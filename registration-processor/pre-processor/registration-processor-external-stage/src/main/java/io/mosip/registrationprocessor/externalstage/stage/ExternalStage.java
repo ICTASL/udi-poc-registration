@@ -24,6 +24,7 @@ import io.mosip.registration.processor.status.exception.TablenotAccessibleExcept
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.service.SyncRegistrationService;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
+import io.mosip.registrationprocessor.externalstage.dto.EmailInfoDTO;
 import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
@@ -232,15 +233,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 }
             }
 
-            try {
-                if (apiName.equals("email")) {
-                    SyncRegistrationEntity regEntity = syncRegistrationService.findByRegistrationId(messageDTO.getRid());
-                    sendNotification(regEntity, registrationStatusDto, true, messageDTO.getRid());
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
                 List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
                 setResponse(ctx, drpDtoList);
@@ -391,6 +383,13 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
                             null, null);
+
+                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
+                            utilities.getGetRegProcessorDemographicIdentity());
+                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
+
+                    sendNotification(convertedObject, registrationStatusDto, true, drpDto.getStatusComment());
+
                 } else if (apiName.equals(ExternalAPIType.PICK.toString())) {
                     this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as PiCK by DRP user");
                     regProcLogger.info(obj.getString("rid"),
@@ -718,33 +717,29 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 .end(Json.encodePrettily(object));
     }
 
-    private void sendNotification(SyncRegistrationEntity regEntity,
-                                  InternalRegistrationStatusDto registrationStatusDto, boolean isTransactionSuccessful, String registrationId) {
+    private void sendNotification(Map map,
+                                  InternalRegistrationStatusDto registrationStatusDto, boolean isTransactionSuccessful, String rejectReason) {
         try {
-            if (regEntity.getOptionalValues() != null) {
+            if (map != null) {
                 String[] allNotificationTypes = notificationTypes.split("\\|");
                 boolean isProcessingSuccess;
-                InputStream inputStream = new ByteArrayInputStream(regEntity.getOptionalValues());
-                InputStream decryptedInputStream = decryptor.decrypt(inputStream, registrationId);
-                String decryptedData = IOUtils.toString(decryptedInputStream, "UTF-8");
-                RegistrationAdditionalInfoDTO registrationAdditionalInfoDTO = (RegistrationAdditionalInfoDTO) JsonUtils
-                        .jsonStringToJavaObject(RegistrationAdditionalInfoDTO.class, decryptedData);
+
+                EmailInfoDTO emailInfoDTO = new EmailInfoDTO();
+                if (map.get("fullName") != null)
+                    emailInfoDTO.setName(map.get("fullName").toString());
+                if (map.get("email") != null)
+                    emailInfoDTO.setEmail(map.get("email").toString());
+                if (map.get("phone") != null)
+                    emailInfoDTO.setPhone(map.get("phone").toString());
+                if (rejectReason != null)
+                    emailInfoDTO.setReason(rejectReason);
+
                 if (isTransactionSuccessful) {
                     isProcessingSuccess = true;
-                    notificationUtility.sendNotification(registrationAdditionalInfoDTO, registrationStatusDto,
-                            regEntity, allNotificationTypes, isProcessingSuccess);
                 } else {
                     isProcessingSuccess = false;
-                    notificationUtility.sendNotification(registrationAdditionalInfoDTO, registrationStatusDto,
-                            regEntity, allNotificationTypes, isProcessingSuccess);
                 }
-//                boolean isDeleted = syncRegistrationService.deleteAdditionalInfo(regEntity);
-//                if (isDeleted) {
-//                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
-//                            LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
-//                            PlatformSuccessMessages.RPR_PKR_ADDITIONAL_INFO_DELETED.getCode() +
-//                                    PlatformSuccessMessages.RPR_PKR_ADDITIONAL_INFO_DELETED.getMessage());
-//                }
+                notificationUtility.sendNotification(emailInfoDTO, registrationStatusDto, allNotificationTypes, isProcessingSuccess);
             }
         } catch (Exception e) {
             regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
