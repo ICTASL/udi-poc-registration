@@ -79,6 +79,18 @@
             <version>1.1.5</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>io.mosip.registrationprocessor</groupId>
+            <artifactId>registration-processor-message-sender-impl</artifactId>
+            <version>1.1.5</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.mosip.registrationprocessor</groupId>
+            <artifactId>registration-processor-message-sender-impl</artifactId>
+            <version>1.1.5</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 	<dependencyManagement>
 		<dependencies>

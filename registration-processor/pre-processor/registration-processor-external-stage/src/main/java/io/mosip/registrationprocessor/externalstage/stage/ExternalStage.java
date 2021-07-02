@@ -1,6 +1,7 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
 import io.mosip.kernel.core.logger.spi.Logger;
+import io.mosip.kernel.core.util.JsonUtils;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
@@ -13,21 +14,25 @@ import io.mosip.registration.processor.core.spi.restclient.RegistrationProcessor
 import io.mosip.registration.processor.core.status.util.StatusUtil;
 import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
+import io.mosip.registration.processor.packet.manager.decryptor.Decryptor;
 import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
 import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequestBuilder;
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
-import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
-import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
+import io.mosip.registration.processor.status.dto.*;
+import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
+import io.mosip.registration.processor.status.service.SyncRegistrationService;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
 import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
+import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +41,8 @@ import org.springframework.stereotype.Service;
 
 import io.mosip.registration.processor.packet.storage.utils.Utilities;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.*;
 
 /**
@@ -136,6 +143,21 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Autowired
     Utilities utilities;
 
+    @Autowired
+    private NotificationUtility notificationUtility;
+
+    @Value("${mosip.notificationtype}")
+    private String notificationTypes;
+
+    @Autowired
+    private Decryptor decryptor;
+
+    /**
+     * The sync registration service.
+     */
+    @Autowired
+    private SyncRegistrationService<SyncResponseDto, SyncRegistrationDto> syncRegistrationService;
+
     /**
      * method to deploy external stage verticle
      */
@@ -208,6 +230,15 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 if (drpDtoList != null && !drpDtoList.isEmpty() && drpDtoList.get(0) != null) {
                     drpDto = drpDtoList.get(0);
                 }
+            }
+
+            try {
+                if (apiName.equals("email")) {
+                    SyncRegistrationEntity regEntity = syncRegistrationService.findByRegistrationId(messageDTO.getRid());
+                    sendNotification(regEntity, registrationStatusDto, true, messageDTO.getRid());
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
@@ -685,5 +716,40 @@ public class ExternalStage extends MosipVerticleAPIManager {
         ctx.response().putHeader("content-type", "application/json").putHeader("Access-Control-Allow-Origin", "*")
                 .putHeader("Access-Control-Allow-Methods", "GET, POST").setStatusCode(400)
                 .end(Json.encodePrettily(object));
+    }
+
+    private void sendNotification(SyncRegistrationEntity regEntity,
+                                  InternalRegistrationStatusDto registrationStatusDto, boolean isTransactionSuccessful, String registrationId) {
+        try {
+            if (regEntity.getOptionalValues() != null) {
+                String[] allNotificationTypes = notificationTypes.split("\\|");
+                boolean isProcessingSuccess;
+                InputStream inputStream = new ByteArrayInputStream(regEntity.getOptionalValues());
+                InputStream decryptedInputStream = decryptor.decrypt(inputStream, registrationId);
+                String decryptedData = IOUtils.toString(decryptedInputStream, "UTF-8");
+                RegistrationAdditionalInfoDTO registrationAdditionalInfoDTO = (RegistrationAdditionalInfoDTO) JsonUtils
+                        .jsonStringToJavaObject(RegistrationAdditionalInfoDTO.class, decryptedData);
+                if (isTransactionSuccessful) {
+                    isProcessingSuccess = true;
+                    notificationUtility.sendNotification(registrationAdditionalInfoDTO, registrationStatusDto,
+                            regEntity, allNotificationTypes, isProcessingSuccess);
+                } else {
+                    isProcessingSuccess = false;
+                    notificationUtility.sendNotification(registrationAdditionalInfoDTO, registrationStatusDto,
+                            regEntity, allNotificationTypes, isProcessingSuccess);
+                }
+//                boolean isDeleted = syncRegistrationService.deleteAdditionalInfo(regEntity);
+//                if (isDeleted) {
+//                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+//                            LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+//                            PlatformSuccessMessages.RPR_PKR_ADDITIONAL_INFO_DELETED.getCode() +
+//                                    PlatformSuccessMessages.RPR_PKR_ADDITIONAL_INFO_DELETED.getMessage());
+//                }
+            }
+        } catch (Exception e) {
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(),
+                    "Send notification failed for rid - " + registrationStatusDto.getRegistrationId(), ExceptionUtils.getStackTrace(e));
+        }
     }
 }
