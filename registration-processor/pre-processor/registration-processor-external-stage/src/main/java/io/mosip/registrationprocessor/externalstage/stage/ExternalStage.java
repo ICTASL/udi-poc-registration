@@ -1,6 +1,7 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
 import io.mosip.kernel.core.logger.spi.Logger;
+import io.mosip.kernel.core.util.JsonUtils;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
@@ -13,25 +14,26 @@ import io.mosip.registration.processor.core.spi.restclient.RegistrationProcessor
 import io.mosip.registration.processor.core.status.util.StatusUtil;
 import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
+import io.mosip.registration.processor.packet.manager.decryptor.Decryptor;
 import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
 import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequestBuilder;
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
-import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
-import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
-import io.mosip.registration.processor.status.dto.SyncRegistrationDto;
-import io.mosip.registration.processor.status.dto.SyncResponseDto;
+import io.mosip.registration.processor.status.dto.*;
 import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.service.SyncRegistrationService;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
+import io.mosip.registrationprocessor.externalstage.dto.EmailInfoDTO;
 import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
-import io.mosip.registrationprocessor.externalstage.entity.MessageRequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
+import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
+import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,10 +42,9 @@ import org.springframework.stereotype.Service;
 
 import io.mosip.registration.processor.packet.storage.utils.Utilities;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.*;
 
 /**
  * External stage verticle class
@@ -143,6 +144,21 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Autowired
     Utilities utilities;
 
+    @Autowired
+    private NotificationUtility notificationUtility;
+
+    @Value("${mosip.notificationtype}")
+    private String notificationTypes;
+
+    @Autowired
+    private Decryptor decryptor;
+
+    /**
+     * The sync registration service.
+     */
+    @Autowired
+    private SyncRegistrationService<SyncResponseDto, SyncRegistrationDto> syncRegistrationService;
+
     /**
      * method to deploy external stage verticle
      */
@@ -198,16 +214,17 @@ public class ExternalStage extends MosipVerticleAPIManager {
             messageDTO.setApiName(obj.getString("apiName"));
             messageDTO.setRid(obj.getString("rid"));
             messageDTO.setIsValid(obj.getBoolean("isValid"));
-            messageDTO.setOperatorId(requestJson.getString("operatorId"));
-            messageDTO.setCenterId(requestJson.getString("centerId"));
-            messageDTO.setMaxLimit(requestJson.getInteger("maxLimit"));
-            messageDTO.setOperatorFlag(requestJson.getString("operatorFlag"));
-            messageDTO.setStageFlag(requestJson.getString("stageFlag"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
             messageDTO.setInternalError(Boolean.FALSE);
             messageDTO.setReg_type(RegistrationType.valueOf(obj.getString("reg_type")));
-            messageDTO.setStatusComment(requestJson.getString("statusComment"));
-
+            if (requestJson != null) {
+                messageDTO.setOperatorId(requestJson.getString("operatorId"));
+                messageDTO.setCenterId(requestJson.getString("centerId"));
+                messageDTO.setMaxLimit(requestJson.getInteger("maxLimit"));
+                messageDTO.setOperatorFlag(requestJson.getString("operatorFlag"));
+                messageDTO.setStageFlag(requestJson.getString("stageFlag"));
+                messageDTO.setStatusComment(requestJson.getString("statusComment"));
+            }
             if (apiName != null && apiName != "" && !apiName.equals(ExternalAPIType.LIST.toString())) {
                 registrationStatusDto = registrationStatusService.getRegistrationStatus(messageDTO.getRid());
                 List<DrpDto> drpDtoList = drpService.getDrpEntryByRegId(messageDTO.getRid());
@@ -217,20 +234,20 @@ public class ExternalStage extends MosipVerticleAPIManager {
             }
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
+                List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
+                setResponse(ctx, drpDtoList);
                 isTransactionSuccessful = false;
                 messageDTO.setIsValid(Boolean.TRUE);
-                ListAPIResponseDTO listAPIResponseDTO = new ListAPIResponseDTO();
-                List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
-//                List<ListAPIResponseDTO> list = populateListApiResponseMock();
-                this.setResponse(ctx, drpDtoList);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.GETDATA.toString())) {
                 if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
                         && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.TRUE);
                     JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
                             utilities.getGetRegProcessorDemographicIdentity());
-                    this.setResponse(ctx, matchedDemographicIdentity);
+                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
+                    convertedObject.put("rid", messageDTO.getRid());
+                    setResponse(ctx, convertedObject);
+                    isTransactionSuccessful = false;
+                    messageDTO.setIsValid(Boolean.TRUE);
                 } else {
                     isTransactionSuccessful = false;
                     messageDTO.setIsValid(Boolean.FALSE);
@@ -366,23 +383,33 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
                             null, null);
-                }  else if (apiName.equals(ExternalAPIType.PICK.toString())) {
+
+                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
+                            utilities.getGetRegProcessorDemographicIdentity());
+                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
+
+                    sendNotification(convertedObject, registrationStatusDto, true, drpDto.getStatusComment());
+
+                } else if (apiName.equals(ExternalAPIType.PICK.toString())) {
                     this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as PiCK by DRP user");
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as PiCK by DRP user",
                             null, null);
-                }  else if (apiName.equals(ExternalAPIType.UNPICK.toString())) {
+                } else if (apiName.equals(ExternalAPIType.UNPICK.toString())) {
                     this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as UNPiCK by DRP user");
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user",
                             null, null);
+                } else if (apiName.equals(ExternalAPIType.GETDATA.toString())) {
+                } else if (apiName.equals(ExternalAPIType.LIST.toString())) {
                 } else {
-                    regProcLogger.info(obj.getString("rid"),
-                            "Invalid APITYPE '" + apiName + "' ",
-                            null, null);
+                    setErrorResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' Invalid API Name");
+                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                            "Invalid API Name " + apiName);
                 }
             } else {
-                this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been forwarded to next stage");
+                setErrorResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been forwarded to next stage");
                 regProcLogger.info(obj.getString("rid"),
                         "Packet with registrationId '" + messageDTO.getRid() + "' has not been forwarded to next stage",
                         null, null);
@@ -440,6 +467,87 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
     }
 
+    private Map convertGetDataObject(JSONObject matchedDemographicIdentity) {
+        Map dataMap = new HashMap<String, String>();
+        try {
+            dataMap.put("profession", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("profession")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("profession", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("gender", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("gender")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("gender", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("fullName", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("fullName")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("fullName", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("postalCode", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("postalCode")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("postalCode", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("province", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("province")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("province", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("district", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("district")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("district", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("city", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("city")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("city", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("addressLine1", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine1")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("addressLine1", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("addressLine2", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine2")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("addressLine2", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("residenceStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("residenceStatus")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("residenceStatus", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("maritalStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("maritalStatus")).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put("maritalStatus", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("dateOfBirth", (String) matchedDemographicIdentity.get("dateOfBirth").toString());
+        } catch (Exception e) {
+            dataMap.put("dateOfBirth", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("phone", (String) matchedDemographicIdentity.get("phone").toString());
+        } catch (Exception e) {
+            dataMap.put("phone", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("nationalIdentityNumber", (String) matchedDemographicIdentity.get("nationalIdentityNumber").toString());
+        } catch (Exception e) {
+            dataMap.put("nationalIdentityNumber", "Error When Fetching Data");
+        }
+        try {
+            dataMap.put("email", (String) matchedDemographicIdentity.get("email").toString());
+        } catch (Exception e) {
+            dataMap.put("email", "Error When Fetching Data");
+        }
+        return dataMap;
+
+    }
+
     /**
      * This is for failure handler
      *
@@ -490,28 +598,38 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 registrationId, "ExternalStage::process()::entry");
         InternalRegistrationStatusDto registrationStatusDto = registrationStatusService
                 .getRegistrationStatus(registrationId);
-        DrpDto drpDto = new DrpDto();
-        isTransactionSuccessful = false;
+        DrpDto drpDto = null;
         try {
             registrationStatusDto
                     .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
             registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
             Boolean temp = false;
-
-            drpDto.setDrpId(generateId());
-            drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
-            drpDto.setStageFlag(RegistrationStatusCode.PROCESSING.toString());
-            drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
-            drpDto.setActive(Boolean.TRUE);
-            drpDto.setCenterId("CENTER1");
-            drpDto.setOperatorId("OPERATOR1");
-            drpService.addDrpTransaction(drpDto);
-            temp = true;
-
+            if (registrationStatusDto != null && registrationId.equals(registrationStatusDto.getRegistrationId())) {
+                List<DrpDto> drpDtoList = drpService.getDrpEntryByRegId(registrationId);
+                if (drpDtoList != null && !drpDtoList.isEmpty() && drpDtoList.get(0) != null) {
+                    drpDto = drpDtoList.get(0);
+                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                            "",
+                            "ExternalStage::process():: Rid Already exist in DRP table : " + drpDto.toString());
+                }
+            }
+            if (drpDto == null) {
+                drpDto = new DrpDto();
+                drpDto.setDrpId(generateId());
+                drpDto.setRegistrationId(registrationStatusDto.getRegistrationId());
+                drpDto.setStageFlag(RegistrationStatusCode.PROCESSING.toString());
+                drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
+                drpDto.setActive(Boolean.TRUE);
+                drpDto.setCenterId("CENTER1");
+                drpDto.setOperatorId("OPERATOR1");
+                drpService.addDrpTransaction(drpDto);
+                temp = true;
+            }
             regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                     "",
                     "ExternalStage::process():: EIS service Api call  ended with response data : " + temp.toString());
+
             if (temp) {
                 registrationStatusDto
                         .setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
@@ -567,6 +685,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     : description.getCode();
             String moduleName = ModuleName.EXTERNAL.toString();
             registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
+
             if (isTransactionSuccessful) {
                 description.setMessage(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getMessage());
                 description.setCode(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getCode());
@@ -584,5 +703,48 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     public String generateId() {
         return UUID.randomUUID().toString();
+    }
+
+    public void setResponse(RoutingContext ctx, Object object) {
+        ctx.response().putHeader("content-type", "application/json").putHeader("Access-Control-Allow-Origin", "*")
+                .putHeader("Access-Control-Allow-Methods", "GET, POST").setStatusCode(200)
+                .end(Json.encodePrettily(object));
+    }
+
+    public void setErrorResponse(RoutingContext ctx, Object object) {
+        ctx.response().putHeader("content-type", "application/json").putHeader("Access-Control-Allow-Origin", "*")
+                .putHeader("Access-Control-Allow-Methods", "GET, POST").setStatusCode(400)
+                .end(Json.encodePrettily(object));
+    }
+
+    private void sendNotification(Map map,
+                                  InternalRegistrationStatusDto registrationStatusDto, boolean isTransactionSuccessful, String rejectReason) {
+        try {
+            if (map != null) {
+                String[] allNotificationTypes = notificationTypes.split("\\|");
+                boolean isProcessingSuccess;
+
+                EmailInfoDTO emailInfoDTO = new EmailInfoDTO();
+                if (map.get("fullName") != null)
+                    emailInfoDTO.setName(map.get("fullName").toString());
+                if (map.get("email") != null)
+                    emailInfoDTO.setEmail(map.get("email").toString());
+                if (map.get("phone") != null)
+                    emailInfoDTO.setPhone(map.get("phone").toString());
+                if (rejectReason != null)
+                    emailInfoDTO.setReason(rejectReason);
+
+                if (isTransactionSuccessful) {
+                    isProcessingSuccess = true;
+                } else {
+                    isProcessingSuccess = false;
+                }
+                notificationUtility.sendNotification(emailInfoDTO, registrationStatusDto, allNotificationTypes, isProcessingSuccess);
+            }
+        } catch (Exception e) {
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(),
+                    "Send notification failed for rid - " + registrationStatusDto.getRegistrationId(), ExceptionUtils.getStackTrace(e));
+        }
     }
 }
