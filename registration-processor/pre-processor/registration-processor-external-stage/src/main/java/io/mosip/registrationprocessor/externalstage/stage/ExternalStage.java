@@ -1,10 +1,12 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosip.kernel.core.logger.spi.Logger;
-import io.mosip.kernel.core.util.JsonUtils;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
+import io.mosip.registration.processor.core.constant.MappingJsonConstants;
+import io.mosip.registration.processor.core.constant.ProviderStageName;
 import io.mosip.registration.processor.core.constant.RegistrationType;
 import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages;
 import io.mosip.registration.processor.core.exception.util.PlatformSuccessMessages;
@@ -16,10 +18,11 @@ import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
 import io.mosip.registration.processor.packet.manager.decryptor.Decryptor;
 import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
+import io.mosip.registration.processor.packet.storage.utils.IdSchemaUtil;
+import io.mosip.registration.processor.packet.storage.utils.PriorityBasedPacketManagerService;
 import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequestBuilder;
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.dto.*;
-import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.service.SyncRegistrationService;
@@ -33,8 +36,10 @@ import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONTokener;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,8 +47,7 @@ import org.springframework.stereotype.Service;
 
 import io.mosip.registration.processor.packet.storage.utils.Utilities;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -91,6 +95,10 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Value("${mosip.regproc.external.message.expiry-time-limit}")
     private Long messageExpiryTimeLimit;
 
+    @Value("${mosip.commons.packet.manager.schema.validator.convertIdSchemaToDouble:true}")
+    private boolean convertIdschemaToDouble;
+
+
     @Autowired
     private AuditLogRequestBuilder auditLogRequestBuilder;
 
@@ -102,6 +110,12 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     @Autowired
     private DrpService<DrpDto> drpService;
+
+    @Autowired
+    private PriorityBasedPacketManagerService packetManagerService;
+
+    @Autowired
+    private IdSchemaUtil idSchemaUtil;
 
     /**
      * rest client to send requests.
@@ -239,13 +253,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 isTransactionSuccessful = false;
                 messageDTO.setIsValid(Boolean.TRUE);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.GETDATA.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
-                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
-                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
-                            utilities.getGetRegProcessorDemographicIdentity());
-                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
-                    convertedObject.put("rid", messageDTO.getRid());
-                    setResponse(ctx, convertedObject);
+                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
+                    setResponse(ctx, getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType()));
                     isTransactionSuccessful = false;
                     messageDTO.setIsValid(Boolean.TRUE);
                 } else {
@@ -383,11 +392,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     regProcLogger.info(obj.getString("rid"),
                             "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
                             null, null);
-
-                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
-                            utilities.getGetRegProcessorDemographicIdentity());
-                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
-
+                    Map convertedObject = getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType());
                     sendNotification(convertedObject, registrationStatusDto, true, drpDto.getStatusComment());
 
                 } else if (apiName.equals(ExternalAPIType.PICK.toString())) {
@@ -470,79 +475,84 @@ public class ExternalStage extends MosipVerticleAPIManager {
     private Map convertGetDataObject(JSONObject matchedDemographicIdentity) {
         Map dataMap = new HashMap<String, String>();
         try {
+            dataMap.put("rid", (String) matchedDemographicIdentity.get("rid").toString());
+        } catch (Exception e) {
+            dataMap.put("rid", "N/A");
+        }
+        try {
             dataMap.put("profession", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("profession")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("profession", "Error When Fetching Data");
+            dataMap.put("profession", "N/A");
         }
         try {
             dataMap.put("gender", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("gender")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("gender", "Error When Fetching Data");
+            dataMap.put("gender", "N/A");
         }
         try {
             dataMap.put("fullName", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("fullName")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("fullName", "Error When Fetching Data");
+            dataMap.put("fullName", "N/A");
         }
         try {
             dataMap.put("postalCode", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("postalCode")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("postalCode", "Error When Fetching Data");
+            dataMap.put("postalCode", "N/A");
         }
         try {
             dataMap.put("province", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("province")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("province", "Error When Fetching Data");
+            dataMap.put("province", "N/A");
         }
         try {
             dataMap.put("district", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("district")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("district", "Error When Fetching Data");
+            dataMap.put("district", "N/A");
         }
         try {
             dataMap.put("city", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("city")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("city", "Error When Fetching Data");
+            dataMap.put("city", "N/A");
         }
         try {
             dataMap.put("addressLine1", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine1")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("addressLine1", "Error When Fetching Data");
+            dataMap.put("addressLine1", "N/A");
         }
         try {
             dataMap.put("addressLine2", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine2")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("addressLine2", "Error When Fetching Data");
+            dataMap.put("addressLine2", "N/A");
         }
         try {
             dataMap.put("residenceStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("residenceStatus")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("residenceStatus", "Error When Fetching Data");
+            dataMap.put("residenceStatus", "N/A");
         }
         try {
             dataMap.put("maritalStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("maritalStatus")).get(0)).get("value"));
         } catch (Exception e) {
-            dataMap.put("maritalStatus", "Error When Fetching Data");
+            dataMap.put("maritalStatus", "N/A");
         }
         try {
             dataMap.put("dateOfBirth", (String) matchedDemographicIdentity.get("dateOfBirth").toString());
         } catch (Exception e) {
-            dataMap.put("dateOfBirth", "Error When Fetching Data");
+            dataMap.put("dateOfBirth", "N/A");
         }
         try {
             dataMap.put("phone", (String) matchedDemographicIdentity.get("phone").toString());
         } catch (Exception e) {
-            dataMap.put("phone", "Error When Fetching Data");
+            dataMap.put("phone", "N/A");
         }
         try {
             dataMap.put("nationalIdentityNumber", (String) matchedDemographicIdentity.get("nationalIdentityNumber").toString());
         } catch (Exception e) {
-            dataMap.put("nationalIdentityNumber", "Error When Fetching Data");
+            dataMap.put("nationalIdentityNumber", "N/A");
         }
         try {
             dataMap.put("email", (String) matchedDemographicIdentity.get("email").toString());
         } catch (Exception e) {
-            dataMap.put("email", "Error When Fetching Data");
+            dataMap.put("email", "N/A");
         }
         return dataMap;
 
@@ -745,6 +755,49 @@ public class ExternalStage extends MosipVerticleAPIManager {
             regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
                     LoggerFileConstant.REGISTRATIONID.toString(),
                     "Send notification failed for rid - " + registrationStatusDto.getRegistrationId(), ExceptionUtils.getStackTrace(e));
+        }
+    }
+
+    private void loadDemographicIdentity(Map<String, String> fieldMap, JSONObject demographicIdentity) throws IOException, JSONException {
+        for (Map.Entry e : fieldMap.entrySet()) {
+            if (e.getValue() != null) {
+                String value = e.getValue().toString();
+                if (value != null) {
+                    Object json = new JSONTokener(value).nextValue();
+                    if (json instanceof org.json.JSONObject) {
+                        HashMap<String, Object> hashMap = new ObjectMapper().readValue(value, HashMap.class);
+                        demographicIdentity.putIfAbsent(e.getKey(), hashMap);
+                    } else if (json instanceof JSONArray) {
+                        List jsonList = new ArrayList<>();
+                        JSONArray jsonArray = new JSONArray(value);
+                        for (int i = 0; i < jsonArray.length(); i++) {
+                            Object obj = jsonArray.get(i);
+                            HashMap<String, Object> hashMap = new ObjectMapper().readValue(obj.toString(), HashMap.class);
+                            jsonList.add(hashMap);
+                        }
+                        demographicIdentity.putIfAbsent(e.getKey(), jsonList);
+                    } else
+                        demographicIdentity.putIfAbsent(e.getKey(), value);
+                } else
+                    demographicIdentity.putIfAbsent(e.getKey(), value);
+            }
+        }
+    }
+
+    private Map getDemographicData(String regId, String regType) {
+        try {
+            String schemaVersion = packetManagerService.getFieldByMappingJsonKey(regId, MappingJsonConstants.IDSCHEMA_VERSION, regType, ProviderStageName.DRP_STAGE);
+            Map<String, String> fieldMap = packetManagerService.getFields(regId,
+                    idSchemaUtil.getDefaultFields(Double.valueOf(schemaVersion)), regType, ProviderStageName.DRP_STAGE);
+
+            JSONObject demographicIdentity = new JSONObject();
+            demographicIdentity.put("rid", regId);
+            demographicIdentity.put(MappingJsonConstants.IDSCHEMA_VERSION, convertIdschemaToDouble ? Double.valueOf(schemaVersion) : schemaVersion);
+            loadDemographicIdentity(fieldMap, demographicIdentity);
+
+            return convertGetDataObject(demographicIdentity);
+        } catch (Exception e) {
+            return null;
         }
     }
 }
