@@ -248,6 +248,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
             }
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
+                drpDto.setOperatorId(messageDTO.getOperatorId());
+                drpDto.setCenterId(messageDTO.getCenterId());
                 List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
                 setResponse(ctx, drpDtoList);
                 isTransactionSuccessful = false;

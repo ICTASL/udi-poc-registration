@@ -69,13 +69,11 @@ public class DrpServiceImpl implements DrpService<DrpDto> {
         try {
             regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(),
                     drpDto.getRegistrationId(),
-                    "DrpServiceImpl::addDrpTransaction()::entry");
-            DrpEntity entity = convertDtoToEntity(drpDto);
-            List<DrpEntity> drpEntityList = drpRepositary.getRIDList(RegistrationStatusCode.PROCESSING.toString(), DrpOperatorStageCode.DEFAULT.toString());
+                    "DrpServiceImpl::getRIDList()::entry");
+            List<DrpEntity> drpEntityList = drpRepositary.getRIDList(RegistrationStatusCode.PROCESSING.toString(), DrpOperatorStageCode.DEFAULT.toString(), drpDto.getOperatorId());
             if (!CollectionUtils.isEmpty(drpEntityList)) {
                 for (DrpEntity drpEntity : drpEntityList) {
-                    drpDto = convertEntityToDto(drpEntity);
-                    drpDtoList.add(drpDto);
+                    drpDtoList.add(convertEntityToDto(drpEntity));
                 }
             }
         } catch (DataAccessLayerException e) {
