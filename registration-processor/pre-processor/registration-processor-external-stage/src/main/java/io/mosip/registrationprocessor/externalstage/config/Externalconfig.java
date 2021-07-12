@@ -11,12 +11,11 @@ import io.mosip.registration.processor.packet.storage.dao.PacketInfoDao;
 import io.mosip.registration.processor.packet.storage.dto.ApplicantInfoDto;
 import io.mosip.registration.processor.packet.storage.helper.PacketManagerHelper;
 import io.mosip.registration.processor.packet.storage.service.impl.PacketInfoManagerImpl;
+import io.mosip.registration.processor.packet.storage.utils.IdSchemaUtil;
 import io.mosip.registration.processor.packet.storage.utils.PacketManagerService;
 import io.mosip.registration.processor.packet.storage.utils.PriorityBasedPacketManagerService;
 import io.mosip.registration.processor.packet.storage.utils.Utilities;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
-import io.mosip.registrationprocessor.externalstage.entity.DrpEntity;
-import io.mosip.registrationprocessor.externalstage.repositary.DrpRepositary;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.service.impl.DrpServiceImpl;
 import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
@@ -126,9 +125,7 @@ public class Externalconfig {
         return new DecryptorImpl();
     }
 
-//	@Bean
-//	public  DrpRepositary<DrpEntity, String> drpRepositary() {
-//		return new DrpRepositary();
-//	}
+    @Bean
+    public IdSchemaUtil idSchemaUtil() { return new IdSchemaUtil(); }
 
 }

@@ -1,10 +1,12 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosip.kernel.core.logger.spi.Logger;
-import io.mosip.kernel.core.util.JsonUtils;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
+import io.mosip.registration.processor.core.constant.MappingJsonConstants;
+import io.mosip.registration.processor.core.constant.ProviderStageName;
 import io.mosip.registration.processor.core.constant.RegistrationType;
 import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages;
 import io.mosip.registration.processor.core.exception.util.PlatformSuccessMessages;
@@ -16,10 +18,15 @@ import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
 import io.mosip.registration.processor.packet.manager.decryptor.Decryptor;
 import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
+import io.mosip.registration.processor.packet.storage.utils.IdSchemaUtil;
+import io.mosip.registration.processor.packet.storage.utils.PriorityBasedPacketManagerService;
+import io.mosip.registration.processor.packet.storage.utils.Utilities;
 import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequestBuilder;
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
-import io.mosip.registration.processor.status.dto.*;
-import io.mosip.registration.processor.status.entity.SyncRegistrationEntity;
+import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
+import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
+import io.mosip.registration.processor.status.dto.SyncRegistrationDto;
+import io.mosip.registration.processor.status.dto.SyncResponseDto;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.service.SyncRegistrationService;
@@ -33,17 +40,16 @@ import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONTokener;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import io.mosip.registration.processor.packet.storage.utils.Utilities;
-
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -91,6 +97,10 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Value("${mosip.regproc.external.message.expiry-time-limit}")
     private Long messageExpiryTimeLimit;
 
+    @Value("${mosip.commons.packet.manager.schema.validator.convertIdSchemaToDouble:true}")
+    private boolean convertIdschemaToDouble;
+
+
     @Autowired
     private AuditLogRequestBuilder auditLogRequestBuilder;
 
@@ -102,6 +112,12 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     @Autowired
     private DrpService<DrpDto> drpService;
+
+    @Autowired
+    private PriorityBasedPacketManagerService packetManagerService;
+
+    @Autowired
+    private IdSchemaUtil idSchemaUtil;
 
     /**
      * rest client to send requests.
@@ -203,7 +219,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
         String apiName = "";
         TrimExceptionMessage trimMessage = new TrimExceptionMessage();
-        LogDescription description = new LogDescription();
+        description = new LogDescription();
         boolean isTransactionSuccessful = false;
 
         try {
@@ -234,135 +250,18 @@ public class ExternalStage extends MosipVerticleAPIManager {
             }
 
             if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.LIST.toString())) {
-                List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
-                setResponse(ctx, drpDtoList);
-                isTransactionSuccessful = false;
-                messageDTO.setIsValid(Boolean.TRUE);
+                getListMethod(ctx, drpDto, messageDTO);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.GETDATA.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
-                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
-                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
-                            utilities.getGetRegProcessorDemographicIdentity());
-                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
-                    convertedObject.put("rid", messageDTO.getRid());
-                    setResponse(ctx, convertedObject);
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.TRUE);
-                } else {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.FALSE);
-                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            "Transaction failed. RID not found in registration table.");
-                }
+                getRidDataMethod(registrationStatusDto, messageDTO, ctx);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.PICK.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
-                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())
-                        && drpDto.getOperatorFlag() != null && drpDto.getOperatorFlag().equals(DrpOperatorStageCode.DEFAULT.toString())) {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.TRUE);
-
-                    drpDto.setOperatorFlag(DrpOperatorStageCode.PICK.toString());
-                    drpDto.setActive(Boolean.TRUE);
-                    drpDto.setCenterId(messageDTO.getCenterId());
-                    drpDto.setOperatorId(messageDTO.getOperatorId());
-                } else {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.FALSE);
-                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            "Transaction failed. RID not found in registration table.");
-                }
+                postPickMethod(ctx, messageDTO, registrationStatusDto, drpDto);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.UNPICK.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
-                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())
-                        && drpDto.getOperatorFlag() != null && drpDto.getOperatorFlag().equals(DrpOperatorStageCode.PICK.toString())) {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.TRUE);
-
-                    drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
-                    drpDto.setActive(Boolean.TRUE);
-                    drpDto.setCenterId(messageDTO.getCenterId());
-                    drpDto.setOperatorId(messageDTO.getOperatorId());
-                } else {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.FALSE);
-                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            "Transaction failed. RID not found in registration table.");
-                }
+                postUnPickMethod(ctx, messageDTO, registrationStatusDto, drpDto);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.SUCCESS.toString())) {
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
-                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
-                    registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
-                    registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
-
-                    registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
-                    registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_SUCCESS.getMessage());
-                    registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_SUCCESS.getCode());
-                    registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSED.toString());
-
-                    drpDto.setStageFlag(RegistrationStatusCode.PROCESSED.toString());
-                    drpDto.setOperatorFlag(RegistrationStatusCode.PROCESSED.toString());
-                    drpDto.setStatusComment(messageDTO.getStatusComment());
-                    drpDto.setActive(Boolean.TRUE);
-                    drpDto.setCenterId(messageDTO.getCenterId());
-                    drpDto.setOperatorId(messageDTO.getOperatorId());
-
-                    messageDTO.setIsValid(Boolean.TRUE);
-                    isTransactionSuccessful = true;
-                    description.setMessage(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getMessage() + " -- " + messageDTO.getRid());
-                    description.setCode(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getCode());
-
-                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            description.getCode() + description.getMessage());
-                } else {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.FALSE);
-                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            "Transaction failed. RID not found in registration table.");
-                }
+                isTransactionSuccessful = postApproveMethod(ctx, messageDTO, registrationStatusDto, drpDto);
 
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.REJECT.toString())) {
-
-                if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
-                        && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
-                    registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
-                    registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
-
-                    registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.REJECTED.toString());
-                    registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_REJECTED.getMessage());
-                    registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_REJECTED.getCode());
-                    registrationStatusDto.setStatusCode(RegistrationStatusCode.REJECTED.toString());
-
-                    drpDto.setStageFlag(RegistrationStatusCode.REJECTED.toString());
-                    drpDto.setOperatorFlag(RegistrationStatusCode.REJECTED.toString());
-                    drpDto.setStatusComment(messageDTO.getStatusComment());
-                    drpDto.setActive(Boolean.TRUE);
-                    drpDto.setCenterId(messageDTO.getCenterId());
-                    drpDto.setOperatorId(messageDTO.getOperatorId());
-
-                    description.setMessage(PlatformErrorMessages.DRP_STAGE_REJECTED.getMessage() + " -- " + messageDTO.getRid());
-                    description.setCode(PlatformErrorMessages.DRP_STAGE_REJECTED.getCode());
-
-                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            description.getCode() + description.getMessage());
-
-                    messageDTO.setIsValid(Boolean.TRUE);
-                    messageDTO.setInternalError(Boolean.FALSE);
-                    messageDTO.setRid(registrationStatusDto.getRegistrationId());
-
-
-                } else {
-                    isTransactionSuccessful = false;
-                    messageDTO.setIsValid(Boolean.FALSE);
-                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            "Transaction failed. RID not found in registration table.");
-                }
+                postRejectMethod(ctx, messageDTO, registrationStatusDto, drpDto);
             } else {
                 isTransactionSuccessful = false;
                 messageDTO.setIsValid(Boolean.FALSE);
@@ -371,44 +270,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                         "Invalid API Name " + apiName);
             }
 
-            if (messageDTO.getIsValid()) {
-                if (apiName.equals(ExternalAPIType.SUCCESS.toString())) {
-                    sendMessage(messageDTO);
-                    this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
-                    regProcLogger.info(obj.getString("rid"),
-                            "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage", null,
-                            null);
-                } else if (apiName.equals(ExternalAPIType.REJECT.toString())) {
-                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been rejected by DRP user");
-                    regProcLogger.info(obj.getString("rid"),
-                            "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
-                            null, null);
-
-                    JSONObject matchedDemographicIdentity = idRepoService.getIdJsonFromIDRepo(messageDTO.getRid(),
-                            utilities.getGetRegProcessorDemographicIdentity());
-                    Map convertedObject = convertGetDataObject(matchedDemographicIdentity);
-
-                    sendNotification(convertedObject, registrationStatusDto, true, drpDto.getStatusComment());
-
-                } else if (apiName.equals(ExternalAPIType.PICK.toString())) {
-                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as PiCK by DRP user");
-                    regProcLogger.info(obj.getString("rid"),
-                            "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as PiCK by DRP user",
-                            null, null);
-                } else if (apiName.equals(ExternalAPIType.UNPICK.toString())) {
-                    this.setResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has been marked as UNPiCK by DRP user");
-                    regProcLogger.info(obj.getString("rid"),
-                            "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user",
-                            null, null);
-                } else if (apiName.equals(ExternalAPIType.GETDATA.toString())) {
-                } else if (apiName.equals(ExternalAPIType.LIST.toString())) {
-                } else {
-                    setErrorResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' Invalid API Name");
-                    regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                            LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
-                            "Invalid API Name " + apiName);
-                }
-            } else {
+            if (!messageDTO.getIsValid()) {
                 setErrorResponse(ctx, "Packet with registrationId '" + obj.getString("rid") + "' has not been forwarded to next stage");
                 regProcLogger.info(obj.getString("rid"),
                         "Packet with registrationId '" + messageDTO.getRid() + "' has not been forwarded to next stage",
@@ -467,86 +329,205 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
     }
 
+    private void postRejectMethod(RoutingContext ctx, MessageDRPrequestDTO messageDTO, InternalRegistrationStatusDto registrationStatusDto, DrpDto drpDto) {
+        if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
+            registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
+            registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
+
+            registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.REJECTED.toString());
+            registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_REJECTED.getMessage());
+            registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_REJECTED.getCode());
+            registrationStatusDto.setStatusCode(RegistrationStatusCode.REJECTED.toString());
+
+            drpDto.setStageFlag(RegistrationStatusCode.REJECTED.toString());
+            drpDto.setOperatorFlag(RegistrationStatusCode.REJECTED.toString());
+            drpDto.setStatusComment(messageDTO.getStatusComment());
+            drpDto.setActive(Boolean.TRUE);
+            drpDto.setCenterId(messageDTO.getCenterId());
+            drpDto.setOperatorId(messageDTO.getOperatorId());
+
+            description.setMessage(PlatformErrorMessages.DRP_STAGE_REJECTED.getMessage() + " -- " + messageDTO.getRid());
+            description.setCode(PlatformErrorMessages.DRP_STAGE_REJECTED.getCode());
+
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    description.getCode() + description.getMessage());
+
+            messageDTO.setIsValid(Boolean.TRUE);
+            messageDTO.setInternalError(Boolean.FALSE);
+            messageDTO.setRid(registrationStatusDto.getRegistrationId());
+        } else {
+            messageDTO.setIsValid(Boolean.FALSE);
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    "Transaction failed. RID not found in registration table.");
+        }
+        if (messageDTO.getIsValid()) {
+            this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user");
+            regProcLogger.info(messageDTO.getRid(),
+                    "Packet with registrationId '" + messageDTO.getRid() + "' has been rejected by DRP user",
+                    null, null);
+            sendNotification(registrationStatusDto, true, drpDto.getStatusComment());
+        }
+    }
+
+    private boolean postApproveMethod(RoutingContext ctx, MessageDRPrequestDTO messageDTO, InternalRegistrationStatusDto registrationStatusDto, DrpDto drpDto) {
+        boolean isTransactionSuccessful = false;
+        if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())) {
+            registrationStatusDto.setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
+            registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
+
+            registrationStatusDto.setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
+            registrationStatusDto.setStatusComment(StatusUtil.DRP_STAGE_SUCCESS.getMessage());
+            registrationStatusDto.setSubStatusCode(StatusUtil.DRP_STAGE_SUCCESS.getCode());
+            registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSED.toString());
+
+            drpDto.setStageFlag(RegistrationStatusCode.PROCESSED.toString());
+            drpDto.setOperatorFlag(RegistrationStatusCode.PROCESSED.toString());
+            drpDto.setStatusComment(messageDTO.getStatusComment());
+            drpDto.setActive(Boolean.TRUE);
+            drpDto.setCenterId(messageDTO.getCenterId());
+            drpDto.setOperatorId(messageDTO.getOperatorId());
+
+            messageDTO.setIsValid(Boolean.TRUE);
+            isTransactionSuccessful = true;
+            description.setMessage(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getMessage() + " -- " + messageDTO.getRid());
+            description.setCode(PlatformSuccessMessages.RPR_DRP_STAGE_SUCCESS.getCode());
+
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    description.getCode() + description.getMessage());
+        } else {
+            isTransactionSuccessful = false;
+            messageDTO.setIsValid(Boolean.FALSE);
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    "Transaction failed. RID not found in registration table.");
+        }
+
+        if (messageDTO.getIsValid()) {
+            sendMessage(messageDTO);
+            this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
+            regProcLogger.info(messageDTO.getRid(),
+                    "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage", null,
+                    null);
+        }
+        return isTransactionSuccessful;
+    }
+
+    private void postUnPickMethod(RoutingContext ctx, MessageDRPrequestDTO messageDTO, InternalRegistrationStatusDto registrationStatusDto, DrpDto drpDto) {
+        if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())
+                && drpDto.getOperatorFlag() != null && drpDto.getOperatorFlag().equals(DrpOperatorStageCode.PICK.toString())) {
+            messageDTO.setIsValid(Boolean.TRUE);
+
+            drpDto.setOperatorFlag(DrpOperatorStageCode.DEFAULT.toString());
+            drpDto.setActive(Boolean.TRUE);
+            drpDto.setCenterId(messageDTO.getCenterId());
+            drpDto.setOperatorId(messageDTO.getOperatorId());
+        } else {
+            messageDTO.setIsValid(Boolean.FALSE);
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    "Transaction failed. RID not found in registration table.");
+        }
+        if (messageDTO.getIsValid()) {
+            this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user");
+            regProcLogger.info(messageDTO.getRid(),
+                    "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as UNPiCK by DRP user",
+                    null, null);
+        }
+    }
+
+    private void postPickMethod(RoutingContext ctx, MessageDRPrequestDTO messageDTO, InternalRegistrationStatusDto registrationStatusDto, DrpDto drpDto) {
+        if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())
+                && drpDto != null && messageDTO.getRid().equalsIgnoreCase(drpDto.getRegistrationId())
+                && drpDto.getOperatorFlag() != null && drpDto.getOperatorFlag().equals(DrpOperatorStageCode.DEFAULT.toString())) {
+            messageDTO.setIsValid(Boolean.TRUE);
+
+            drpDto.setOperatorFlag(DrpOperatorStageCode.PICK.toString());
+            drpDto.setActive(Boolean.TRUE);
+            drpDto.setCenterId(messageDTO.getCenterId());
+            drpDto.setOperatorId(messageDTO.getOperatorId());
+        } else {
+            messageDTO.setIsValid(Boolean.FALSE);
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    "Transaction failed. RID not found in registration table.");
+        }
+        if (messageDTO.getIsValid()) {
+            this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as PiCK by DRP user");
+            regProcLogger.info(messageDTO.getRid(),
+                    "Packet with registrationId '" + messageDTO.getRid() + "' has been marked as PiCK by DRP user",
+                    null, null);
+        }
+    }
+
+    private void getRidDataMethod(InternalRegistrationStatusDto registrationStatusDto, MessageDRPrequestDTO messageDTO, RoutingContext ctx) {
+        if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
+            setResponse(ctx, getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType()));
+            messageDTO.setIsValid(Boolean.TRUE);
+        } else {
+            messageDTO.setIsValid(Boolean.FALSE);
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), messageDTO.getRid(),
+                    "Transaction failed. RID not found in registration table.");
+        }
+        if (messageDTO.getIsValid()) {
+
+        }
+    }
+
+    private void getListMethod(RoutingContext ctx, DrpDto drpDto, MessageDRPrequestDTO messageDTO) {
+        drpDto.setOperatorId(messageDTO.getOperatorId());
+        drpDto.setCenterId(messageDTO.getCenterId());
+        List<DrpDto> drpDtoList = drpService.getRIDList(drpDto);
+        setResponse(ctx, drpDtoList);
+        messageDTO.setIsValid(Boolean.TRUE);
+        if (messageDTO.getIsValid()) {
+
+        }
+    }
+
     private Map convertGetDataObject(JSONObject matchedDemographicIdentity) {
         Map dataMap = new HashMap<String, String>();
-        try {
-            dataMap.put("profession", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("profession")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("profession", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("gender", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("gender")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("gender", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("fullName", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("fullName")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("fullName", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("postalCode", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("postalCode")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("postalCode", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("province", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("province")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("province", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("district", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("district")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("district", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("city", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("city")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("city", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("addressLine1", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine1")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("addressLine1", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("addressLine2", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("addressLine2")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("addressLine2", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("residenceStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("residenceStatus")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("residenceStatus", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("maritalStatus", (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get("maritalStatus")).get(0)).get("value"));
-        } catch (Exception e) {
-            dataMap.put("maritalStatus", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("dateOfBirth", (String) matchedDemographicIdentity.get("dateOfBirth").toString());
-        } catch (Exception e) {
-            dataMap.put("dateOfBirth", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("phone", (String) matchedDemographicIdentity.get("phone").toString());
-        } catch (Exception e) {
-            dataMap.put("phone", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("nationalIdentityNumber", (String) matchedDemographicIdentity.get("nationalIdentityNumber").toString());
-        } catch (Exception e) {
-            dataMap.put("nationalIdentityNumber", "Error When Fetching Data");
-        }
-        try {
-            dataMap.put("email", (String) matchedDemographicIdentity.get("email").toString());
-        } catch (Exception e) {
-            dataMap.put("email", "Error When Fetching Data");
-        }
+        demographicDataPutString("rid", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("profession", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("gender", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("fullName", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("postalCode", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("province", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("district", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("city", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("addressLine1", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("addressLine2", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("residenceStatus", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("maritalStatus", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("dateOfBirth", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("phone", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("nationalIdentityNumber", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("email", matchedDemographicIdentity, dataMap);
         return dataMap;
-
     }
+
+    private void demographicDataPutString(String key, JSONObject matchedDemographicIdentity, Map dataMap) {
+        try {
+            dataMap.put(key, (String) matchedDemographicIdentity.get(key).toString());
+        } catch (Exception e) {
+            dataMap.put(key, "N/A");
+        }
+    }
+
+    private void demographicDataPutList(String key, JSONObject matchedDemographicIdentity, Map dataMap) {
+        try {
+            dataMap.put(key, (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get(key)).get(0)).get("value"));
+        } catch (Exception e) {
+            dataMap.put(key, "N/A");
+        }
+    }
+
 
     /**
      * This is for failure handler
@@ -564,22 +545,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     public void sendMessage(MessageDTO messageDTO) {
         this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
-    }
-
-    private List populateListApiResponseMock() {
-        List arrayList = new ArrayList();
-
-        for (int refId = 1; refId < 11; refId++) {
-            ListAPIResponseDTO listAPIResponseDTO = new ListAPIResponseDTO();
-            listAPIResponseDTO.setRefId(String.valueOf(refId));
-            listAPIResponseDTO.setRid("110011001100" + refId);
-            listAPIResponseDTO.setOperatorId("1001");
-            listAPIResponseDTO.setCenterId("0001");
-            listAPIResponseDTO.setOperatorFlag(0);
-            listAPIResponseDTO.setStageFlag(0);
-            arrayList.add(listAPIResponseDTO);
-        }
-        return arrayList;
     }
 
     /**
@@ -717,20 +682,20 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 .end(Json.encodePrettily(object));
     }
 
-    private void sendNotification(Map map,
-                                  InternalRegistrationStatusDto registrationStatusDto, boolean isTransactionSuccessful, String rejectReason) {
+    private void sendNotification(InternalRegistrationStatusDto registrationStatusDto, boolean isTransactionSuccessful, String rejectReason) {
         try {
-            if (map != null) {
+            Map convertedObject = getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType());
+            if (convertedObject != null) {
                 String[] allNotificationTypes = notificationTypes.split("\\|");
                 boolean isProcessingSuccess;
 
                 EmailInfoDTO emailInfoDTO = new EmailInfoDTO();
-                if (map.get("fullName") != null)
-                    emailInfoDTO.setName(map.get("fullName").toString());
-                if (map.get("email") != null)
-                    emailInfoDTO.setEmail(map.get("email").toString());
-                if (map.get("phone") != null)
-                    emailInfoDTO.setPhone(map.get("phone").toString());
+                if (convertedObject.get("fullName") != null)
+                    emailInfoDTO.setName(convertedObject.get("fullName").toString());
+                if (convertedObject.get("email") != null)
+                    emailInfoDTO.setEmail(convertedObject.get("email").toString());
+                if (convertedObject.get("phone") != null)
+                    emailInfoDTO.setPhone(convertedObject.get("phone").toString());
                 if (rejectReason != null)
                     emailInfoDTO.setReason(rejectReason);
 
@@ -745,6 +710,49 @@ public class ExternalStage extends MosipVerticleAPIManager {
             regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
                     LoggerFileConstant.REGISTRATIONID.toString(),
                     "Send notification failed for rid - " + registrationStatusDto.getRegistrationId(), ExceptionUtils.getStackTrace(e));
+        }
+    }
+
+    private void loadDemographicIdentity(Map<String, String> fieldMap, JSONObject demographicIdentity) throws IOException, JSONException {
+        for (Map.Entry e : fieldMap.entrySet()) {
+            if (e.getValue() != null) {
+                String value = e.getValue().toString();
+                if (value != null) {
+                    Object json = new JSONTokener(value).nextValue();
+                    if (json instanceof org.json.JSONObject) {
+                        HashMap<String, Object> hashMap = new ObjectMapper().readValue(value, HashMap.class);
+                        demographicIdentity.putIfAbsent(e.getKey(), hashMap);
+                    } else if (json instanceof JSONArray) {
+                        List jsonList = new ArrayList<>();
+                        JSONArray jsonArray = new JSONArray(value);
+                        for (int i = 0; i < jsonArray.length(); i++) {
+                            Object obj = jsonArray.get(i);
+                            HashMap<String, Object> hashMap = new ObjectMapper().readValue(obj.toString(), HashMap.class);
+                            jsonList.add(hashMap);
+                        }
+                        demographicIdentity.putIfAbsent(e.getKey(), jsonList);
+                    } else
+                        demographicIdentity.putIfAbsent(e.getKey(), value);
+                } else
+                    demographicIdentity.putIfAbsent(e.getKey(), value);
+            }
+        }
+    }
+
+    private Map getDemographicData(String regId, String regType) {
+        try {
+            String schemaVersion = packetManagerService.getFieldByMappingJsonKey(regId, MappingJsonConstants.IDSCHEMA_VERSION, regType, ProviderStageName.DRP_STAGE);
+            Map<String, String> fieldMap = packetManagerService.getFields(regId,
+                    idSchemaUtil.getDefaultFields(Double.valueOf(schemaVersion)), regType, ProviderStageName.DRP_STAGE);
+
+            JSONObject demographicIdentity = new JSONObject();
+            demographicIdentity.put("rid", regId);
+            demographicIdentity.put(MappingJsonConstants.IDSCHEMA_VERSION, convertIdschemaToDouble ? Double.valueOf(schemaVersion) : schemaVersion);
+            loadDemographicIdentity(fieldMap, demographicIdentity);
+
+            return convertGetDataObject(demographicIdentity);
+        } catch (Exception e) {
+            return null;
         }
     }
 }
