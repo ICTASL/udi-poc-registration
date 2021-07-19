@@ -1,23 +1,43 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosip.kernel.biometrics.entities.BIR;
+import io.mosip.kernel.biometrics.entities.BiometricRecord;
+import io.mosip.kernel.core.cbeffutil.jaxbclasses.BIRType;
+import io.mosip.kernel.core.cbeffutil.jaxbclasses.SingleType;
+import io.mosip.kernel.core.cbeffutil.spi.CbeffUtil;
 import io.mosip.kernel.core.logger.spi.Logger;
+import io.mosip.kernel.core.pdfgenerator.exception.PDFGeneratorException;
+import io.mosip.kernel.core.util.CryptoUtil;
+import io.mosip.kernel.core.util.DateUtils;
+import io.mosip.kernel.core.util.JsonUtils;
+import io.mosip.kernel.core.util.exception.JsonProcessingException;
+import io.mosip.kernel.pdfgenerator.itext.constant.PDFGeneratorExceptionCodeConstant;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
 import io.mosip.registration.processor.core.constant.MappingJsonConstants;
 import io.mosip.registration.processor.core.constant.ProviderStageName;
 import io.mosip.registration.processor.core.constant.RegistrationType;
+import io.mosip.registration.processor.core.exception.ApisResourceAccessException;
+import io.mosip.registration.processor.core.exception.PacketManagerException;
 import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages;
 import io.mosip.registration.processor.core.exception.util.PlatformSuccessMessages;
+import io.mosip.registration.processor.core.http.RequestWrapper;
+import io.mosip.registration.processor.core.http.ResponseWrapper;
 import io.mosip.registration.processor.core.logger.LogDescription;
 import io.mosip.registration.processor.core.logger.RegProcessorLogger;
 import io.mosip.registration.processor.core.spi.restclient.RegistrationProcessorRestClientService;
 import io.mosip.registration.processor.core.status.util.StatusUtil;
 import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
+import io.mosip.registration.processor.core.util.CbeffToBiometricUtil;
+import io.mosip.registration.processor.core.util.JsonUtil;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
 import io.mosip.registration.processor.packet.manager.decryptor.Decryptor;
 import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
+import io.mosip.registration.processor.packet.storage.dto.BiometricRequestDto;
+import io.mosip.registration.processor.packet.storage.dto.Document;
+import io.mosip.registration.processor.packet.storage.utils.BIRConverter;
 import io.mosip.registration.processor.packet.storage.utils.IdSchemaUtil;
 import io.mosip.registration.processor.packet.storage.utils.PriorityBasedPacketManagerService;
 import io.mosip.registration.processor.packet.storage.utils.Utilities;
@@ -32,7 +52,6 @@ import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.service.SyncRegistrationService;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
 import io.mosip.registrationprocessor.externalstage.dto.EmailInfoDTO;
-import io.mosip.registrationprocessor.externalstage.entity.ListAPIResponseDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
@@ -49,8 +68,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.util.*;
+
+import org.apache.commons.codec.binary.Base64;
 
 /**
  * External stage verticle class
@@ -158,7 +181,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      * The utilities.
      */
     @Autowired
-    Utilities utilities;
+    Utilities utility;
 
     @Autowired
     private NotificationUtility notificationUtility;
@@ -168,6 +191,14 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     @Autowired
     private Decryptor decryptor;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private CbeffUtil cbeffutil;
+
+    private static final String VALUE = "value";
 
     /**
      * The sync registration service.
@@ -259,7 +290,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 postUnPickMethod(ctx, messageDTO, registrationStatusDto, drpDto);
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.SUCCESS.toString())) {
                 isTransactionSuccessful = postApproveMethod(ctx, messageDTO, registrationStatusDto, drpDto);
-
             } else if (apiName != null && apiName != "" && apiName.equals(ExternalAPIType.REJECT.toString())) {
                 postRejectMethod(ctx, messageDTO, registrationStatusDto, drpDto);
             } else {
@@ -326,6 +356,179 @@ public class ExternalStage extends MosipVerticleAPIManager {
             } else if (apiName.equals(ExternalAPIType.PICK.toString()) || apiName.equals(ExternalAPIType.UNPICK.toString())) {
                 drpService.updateDrpTransaction(drpDto);
             }
+        }
+    }
+
+    private Map<String, String> getImage(MessageDTO messageDTO) {
+        Map<String, String> responceMap = new HashMap<>();
+        try {
+            JSONObject docMappingJson = utility.getRegistrationProcessorMappingJson(MappingJsonConstants.DOCUMENT);
+            JSONObject identityMappingJson = utility.getRegistrationProcessorMappingJson(MappingJsonConstants.IDENTITY);
+            String proofOfAddressLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POA), VALUE);
+            String proofOfDateOfBirthLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POB), VALUE);
+            String proofOfIdentityLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POI), VALUE);
+            String proofOfRelationshipLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POR), VALUE);
+            String proofOfExceptionsLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POE), VALUE);
+            String applicantBiometricLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(identityMappingJson, MappingJsonConstants.INDIVIDUAL_BIOMETRICS), VALUE);
+            String introducerBiometricLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(identityMappingJson, MappingJsonConstants.PARENT_OR_GUARDIAN_BIO), VALUE);
+
+            List<String> fields = new ArrayList<>();
+            fields.add(proofOfAddressLabel);
+            fields.add(proofOfDateOfBirthLabel);
+            fields.add(proofOfIdentityLabel);
+            fields.add(proofOfRelationshipLabel);
+            fields.add(proofOfExceptionsLabel);
+            fields.add(applicantBiometricLabel);
+            fields.add(introducerBiometricLabel);
+
+
+            String registrationId = messageDTO.getRid();
+            String process = messageDTO.getReg_type().name();
+            Map<String, String> docFields = packetManagerService.getFields(registrationId, fields, process, ProviderStageName.PACKET_VALIDATOR);
+
+            if (docFields.get(proofOfAddressLabel) != null) {
+                Document aaa = packetManagerService.getDocument(registrationId, proofOfAddressLabel, process, ProviderStageName.PACKET_VALIDATOR);
+                responceMap.put(proofOfAddressLabel, CryptoUtil.encodeBase64String(aaa.getDocument()));
+            }
+            if (docFields.get(proofOfDateOfBirthLabel) != null) {
+                byte[] response = packetManagerService.getDocument(registrationId, proofOfDateOfBirthLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+                if (response != null)
+                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
+            }
+            if (docFields.get(proofOfIdentityLabel) != null) {
+                byte[] response = packetManagerService.getDocument(registrationId, proofOfIdentityLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+                if (response != null)
+                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
+            }
+            if (docFields.get(proofOfRelationshipLabel) != null) {
+                byte[] response = packetManagerService.getDocument(registrationId, proofOfRelationshipLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+                if (response != null)
+                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
+            }
+//            if (docFields.get(applicantBiometricLabel) != null) {
+//                BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
+//                if (biometricRecord != null && biometricRecord.getSegments() != null && biometricRecord.getSegments().size() != 0) {
+//                    byte[] xml = cbeffutil.createXML(BIRConverter.convertSegmentsToBIRList(biometricRecord.getSegments()));
+//                    List<BIRType> bIRTypeList = cbeffutil.getBIRDataFromXML(xml);
+//                    List<String> subtype = new ArrayList<>();
+//                    byte[] photoBytes = getPhotoByTypeAndSubType(bIRTypeList, "FACE", subtype);
+//                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS + "_1", CryptoUtil.encodeBase64String(photoBytes));
+//                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS + "_2", CryptoUtil.encodeBase64String(extractFaceImageData(photoBytes)));
+//                }
+//            }
+            if (docFields.get(proofOfExceptionsLabel) != null) {
+                byte[] response = packetManagerService.getDocument(registrationId, proofOfExceptionsLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+                if (response != null)
+                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
+            }
+            return responceMap;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    protected BiometricRecord getBiometrics(String id, String person, List<String> modalities, String source, String process) throws ApisResourceAccessException, PacketManagerException, JsonProcessingException, IOException {
+
+        BiometricRequestDto fieldDto = new BiometricRequestDto(id, person, modalities, source, process, false);
+
+        RequestWrapper<BiometricRequestDto> request = new RequestWrapper<>();
+        request.setId(ID);
+        request.setVersion(VERSION);
+        request.setRequesttime(DateUtils.getUTCCurrentDateTime());
+        request.setRequest(fieldDto);
+        ResponseWrapper<BiometricRecord> response = (ResponseWrapper) registrationProcessorRestService.postApi(ApiName.PACKETMANAGER_SEARCH_BIOMETRICS, "", "", request, ResponseWrapper.class);
+
+        if (response.getErrors() != null && response.getErrors().size() > 0) {
+            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id, JsonUtils.javaObjectToJsonString(response));
+            throw new PacketManagerException(response.getErrors().get(0).getErrorCode(), response.getErrors().get(0).getMessage());
+        }
+//        ObjectMapper objectMapper = new ObjectMapper();
+        if (response.getResponse() != null) {
+            BiometricRecord biometricRecord = objectMapper.readValue(JsonUtils.javaObjectToJsonString(response.getResponse()), BiometricRecord.class);
+            return biometricRecord;
+        }
+        return null;
+
+    }
+
+    private byte[] getPhotoByTypeAndSubType(List<BIRType> bIRTypeList, String type, List<String> subType) {
+        byte[] photoBytes = null;
+        for (BIRType birType : bIRTypeList) {
+            if (birType.getBDBInfo() != null) {
+                List<SingleType> singleTypeList = birType.getBDBInfo().getType();
+                List<String> subTypeList = birType.getBDBInfo().getSubtype();
+
+                boolean isType = isSingleType(type, singleTypeList);
+                boolean isSubType = isSubType(subType, subTypeList);
+
+                if (isType && isSubType) {
+                    photoBytes = birType.getBDB();
+                    break;
+                }
+            }
+        }
+        return photoBytes;
+    }
+
+    private boolean isSubType(List<String> subType, List<String> subTypeList) {
+        return subTypeList.equals(subType) ? Boolean.TRUE : Boolean.FALSE;
+    }
+
+    private boolean isSingleType(String type, List<SingleType> singleTypeList) {
+        boolean isType = false;
+        for (SingleType singletype : singleTypeList) {
+            if (singletype.value().equalsIgnoreCase(type)) {
+                isType = true;
+            }
+        }
+        return isType;
+    }
+
+    public byte[] extractFaceImageData(byte[] decodedBioValue) {
+
+        try (DataInputStream din = new DataInputStream(new ByteArrayInputStream(decodedBioValue))) {
+
+            byte[] format = new byte[4];
+            din.read(format, 0, 4);
+            byte[] version = new byte[4];
+            din.read(version, 0, 4);
+            int recordLength = din.readInt();
+            short numberofRepresentionRecord = din.readShort();
+            byte certificationFlag = din.readByte();
+            byte[] temporalSequence = new byte[2];
+            din.read(temporalSequence, 0, 2);
+            int representationLength = din.readInt();
+            byte[] representationData = new byte[representationLength - 4];
+            din.read(representationData, 0, representationData.length);
+            try (DataInputStream rdin = new DataInputStream(new ByteArrayInputStream(representationData))) {
+                byte[] captureDetails = new byte[14];
+                rdin.read(captureDetails, 0, 14);
+                byte noOfQualityBlocks = rdin.readByte();
+                if (noOfQualityBlocks > 0) {
+                    byte[] qualityBlocks = new byte[noOfQualityBlocks * 5];
+                    rdin.read(qualityBlocks, 0, qualityBlocks.length);
+                }
+                short noOfLandmarkPoints = rdin.readShort();
+                byte[] facialInformation = new byte[15];
+                rdin.read(facialInformation, 0, 15);
+                if (noOfLandmarkPoints > 0) {
+                    byte[] landmarkPoints = new byte[noOfLandmarkPoints * 8];
+                    rdin.read(landmarkPoints, 0, landmarkPoints.length);
+                }
+                byte faceType = rdin.readByte();
+                byte imageDataType = rdin.readByte();
+                byte[] otherImageInformation = new byte[9];
+                rdin.read(otherImageInformation, 0, otherImageInformation.length);
+                int lengthOfImageData = rdin.readInt();
+
+                byte[] image = new byte[lengthOfImageData];
+                rdin.read(image, 0, lengthOfImageData);
+
+                return image;
+            }
+        } catch (Exception ex) {
+            throw new PDFGeneratorException(PDFGeneratorExceptionCodeConstant.PDF_EXCEPTION.getErrorCode(),
+                    ex.getMessage() + io.mosip.kernel.core.exception.ExceptionUtils.getStackTrace(ex));
         }
     }
 
@@ -467,7 +670,9 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     private void getRidDataMethod(InternalRegistrationStatusDto registrationStatusDto, MessageDRPrequestDTO messageDTO, RoutingContext ctx) {
         if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
-            setResponse(ctx, getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType()));
+            Map map = getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType());
+            map.put("documents", getImage(messageDTO));
+            setResponse(ctx, map);
             messageDTO.setIsValid(Boolean.TRUE);
         } else {
             messageDTO.setIsValid(Boolean.FALSE);
