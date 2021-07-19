@@ -405,17 +405,20 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 if (response != null)
                     responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
             }
-//            if (docFields.get(applicantBiometricLabel) != null) {
-//                BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
-//                if (biometricRecord != null && biometricRecord.getSegments() != null && biometricRecord.getSegments().size() != 0) {
-//                    byte[] xml = cbeffutil.createXML(BIRConverter.convertSegmentsToBIRList(biometricRecord.getSegments()));
-//                    List<BIRType> bIRTypeList = cbeffutil.getBIRDataFromXML(xml);
-//                    List<String> subtype = new ArrayList<>();
-//                    byte[] photoBytes = getPhotoByTypeAndSubType(bIRTypeList, "FACE", subtype);
-//                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS + "_1", CryptoUtil.encodeBase64String(photoBytes));
-//                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS + "_2", CryptoUtil.encodeBase64String(extractFaceImageData(photoBytes)));
-//                }
-//            }
+            if (docFields.get(applicantBiometricLabel) != null) {
+                BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
+                if (biometricRecord != null && biometricRecord.getSegments() != null && biometricRecord.getSegments().size() != 0) {
+                    byte[] xml = cbeffutil.createXML(BIRConverter.convertSegmentsToBIRList(biometricRecord.getSegments()));
+                    List<BIRType> bIRTypeList = cbeffutil.getBIRDataFromXML(xml);
+                    List<String> subtype = new ArrayList<>();
+                    byte[] photoBytes = getPhotoByTypeAndSubType(bIRTypeList, "FACE", subtype);
+//                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, CryptoUtil.encodeBase64String(photoBytes));
+                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, CryptoUtil.encodeBase64String(extractFaceImageData(photoBytes)));
+                    ByteArrayInputStream bis = new ByteArrayInputStream(extractFaceImageData(photoBytes));
+                    BufferedImage image = ImageIO.read(bis);
+                    ImageIO.write(image, "jpeg", new File("output.jpeg"));
+                }
+            }
             if (docFields.get(proofOfExceptionsLabel) != null) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfExceptionsLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
@@ -528,7 +531,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
             }
         } catch (Exception ex) {
             throw new PDFGeneratorException(PDFGeneratorExceptionCodeConstant.PDF_EXCEPTION.getErrorCode(),
-                    ex.getMessage() + io.mosip.kernel.core.exception.ExceptionUtils.getStackTrace(ex));
+                    ex.getMessage() + ExceptionUtils.getStackTrace(ex));
         }
     }
 

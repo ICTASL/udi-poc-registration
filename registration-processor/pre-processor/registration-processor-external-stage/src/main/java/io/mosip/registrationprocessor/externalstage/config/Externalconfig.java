@@ -1,5 +1,9 @@
 package io.mosip.registrationprocessor.externalstage.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.mosip.kernel.cbeffutil.impl.CbeffImpl;
+import io.mosip.kernel.core.cbeffutil.spi.CbeffUtil;
 import io.mosip.registration.processor.core.packet.dto.Identity;
 import io.mosip.registration.processor.core.spi.packetmanager.PacketInfoManager;
 import io.mosip.registration.processor.message.sender.template.TemplateGenerator;
@@ -127,5 +131,15 @@ public class Externalconfig {
 
     @Bean
     public IdSchemaUtil idSchemaUtil() { return new IdSchemaUtil(); }
+
+    @Bean
+    public ObjectMapper getObjectMapper() {
+        return new ObjectMapper().registerModule(new JavaTimeModule());
+    }
+
+    @Bean
+    public CbeffUtil getCbeffUtil() {
+        return new CbeffImpl();
+    }
 
 }
