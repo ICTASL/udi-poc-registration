@@ -412,11 +412,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     List<BIRType> bIRTypeList = cbeffutil.getBIRDataFromXML(xml);
                     List<String> subtype = new ArrayList<>();
                     byte[] photoBytes = getPhotoByTypeAndSubType(bIRTypeList, "FACE", subtype);
-//                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, CryptoUtil.encodeBase64String(photoBytes));
                     responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, CryptoUtil.encodeBase64String(extractFaceImageData(photoBytes)));
-                    ByteArrayInputStream bis = new ByteArrayInputStream(extractFaceImageData(photoBytes));
-                    BufferedImage image = ImageIO.read(bis);
-                    ImageIO.write(image, "jpeg", new File("output.jpeg"));
                 }
             }
             if (docFields.get(proofOfExceptionsLabel) != null) {
