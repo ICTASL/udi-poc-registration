@@ -1,41 +1,27 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosip.kernel.biometrics.entities.BIR;
 import io.mosip.kernel.biometrics.entities.BiometricRecord;
 import io.mosip.kernel.core.cbeffutil.jaxbclasses.BIRType;
 import io.mosip.kernel.core.cbeffutil.jaxbclasses.SingleType;
 import io.mosip.kernel.core.cbeffutil.spi.CbeffUtil;
 import io.mosip.kernel.core.logger.spi.Logger;
-import io.mosip.kernel.core.pdfgenerator.exception.PDFGeneratorException;
 import io.mosip.kernel.core.util.CryptoUtil;
-import io.mosip.kernel.core.util.DateUtils;
-import io.mosip.kernel.core.util.JsonUtils;
-import io.mosip.kernel.core.util.exception.JsonProcessingException;
-import io.mosip.kernel.pdfgenerator.itext.constant.PDFGeneratorExceptionCodeConstant;
 import io.mosip.registration.processor.core.abstractverticle.*;
 import io.mosip.registration.processor.core.code.*;
 import io.mosip.registration.processor.core.constant.LoggerFileConstant;
 import io.mosip.registration.processor.core.constant.MappingJsonConstants;
 import io.mosip.registration.processor.core.constant.ProviderStageName;
 import io.mosip.registration.processor.core.constant.RegistrationType;
-import io.mosip.registration.processor.core.exception.ApisResourceAccessException;
-import io.mosip.registration.processor.core.exception.PacketManagerException;
 import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages;
 import io.mosip.registration.processor.core.exception.util.PlatformSuccessMessages;
-import io.mosip.registration.processor.core.http.RequestWrapper;
-import io.mosip.registration.processor.core.http.ResponseWrapper;
 import io.mosip.registration.processor.core.logger.LogDescription;
 import io.mosip.registration.processor.core.logger.RegProcessorLogger;
 import io.mosip.registration.processor.core.spi.restclient.RegistrationProcessorRestClientService;
 import io.mosip.registration.processor.core.status.util.StatusUtil;
 import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
-import io.mosip.registration.processor.core.util.CbeffToBiometricUtil;
 import io.mosip.registration.processor.core.util.JsonUtil;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
-import io.mosip.registration.processor.packet.manager.decryptor.Decryptor;
-import io.mosip.registration.processor.packet.manager.idreposervice.IdRepoService;
-import io.mosip.registration.processor.packet.storage.dto.BiometricRequestDto;
 import io.mosip.registration.processor.packet.storage.dto.Document;
 import io.mosip.registration.processor.packet.storage.utils.BIRConverter;
 import io.mosip.registration.processor.packet.storage.utils.IdSchemaUtil;
@@ -45,16 +31,15 @@ import io.mosip.registration.processor.rest.client.audit.builder.AuditLogRequest
 import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
 import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
-import io.mosip.registration.processor.status.dto.SyncRegistrationDto;
-import io.mosip.registration.processor.status.dto.SyncResponseDto;
 import io.mosip.registration.processor.status.exception.TablenotAccessibleException;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
-import io.mosip.registration.processor.status.service.SyncRegistrationService;
 import io.mosip.registrationprocessor.externalstage.DrpDto;
 import io.mosip.registrationprocessor.externalstage.dto.EmailInfoDTO;
 import io.mosip.registrationprocessor.externalstage.entity.MessageDRPrequestDTO;
 import io.mosip.registrationprocessor.externalstage.service.DrpService;
 import io.mosip.registrationprocessor.externalstage.utils.DrpOperatorStageCode;
+import io.mosip.registrationprocessor.externalstage.utils.ExtractFaceImageData;
+import io.mosip.registrationprocessor.externalstage.utils.JP2ImageConverter;
 import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
@@ -68,12 +53,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.*;
-
-import org.apache.commons.codec.binary.Base64;
 
 /**
  * External stage verticle class
@@ -123,9 +104,29 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Value("${mosip.commons.packet.manager.schema.validator.convertIdSchemaToDouble:true}")
     private boolean convertIdschemaToDouble;
 
+    /**
+     * The context path.
+     */
+    @Value("${server.servlet.path}")
+    private String contextPath;
+
+    @Value("${mosip.notificationtype}")
+    private String notificationTypes;
 
     @Autowired
     private AuditLogRequestBuilder auditLogRequestBuilder;
+
+    /**
+     * Mosip router for APIs
+     */
+    @Autowired
+    MosipRouter router;
+
+    /**
+     * The description.
+     */
+    @Autowired
+    LogDescription description;
 
     /**
      * The registration status service.
@@ -148,34 +149,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Autowired
     private RegistrationProcessorRestClientService<Object> registrationProcessorRestService;
 
-    /**
-     * Mosip router for APIs
-     */
-    @Autowired
-    MosipRouter router;
-
-    /**
-     * The description.
-     */
-    @Autowired
-    LogDescription description;
-
-    /**
-     * The context path.
-     */
-    @Value("${server.servlet.path}")
-    private String contextPath;
-
-    /**
-     * The Constant USER.
-     */
-    private static final String USER = "MOSIP_SYSTEM";
-
     @Autowired
     RegistrationExceptionMapperUtil registrationStatusMapperUtil;
-
-    @Autowired
-    private IdRepoService idRepoService;
 
     /**
      * The utilities.
@@ -186,25 +161,21 @@ public class ExternalStage extends MosipVerticleAPIManager {
     @Autowired
     private NotificationUtility notificationUtility;
 
-    @Value("${mosip.notificationtype}")
-    private String notificationTypes;
-
-    @Autowired
-    private Decryptor decryptor;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
     @Autowired
     private CbeffUtil cbeffutil;
 
-    private static final String VALUE = "value";
+    @Autowired
+    private JP2ImageConverter jp2ImageConverter;
+
+    @Autowired
+    private ExtractFaceImageData extractFaceImageData;
+
 
     /**
-     * The sync registration service.
+     * The Constant USER.
      */
-    @Autowired
-    private SyncRegistrationService<SyncResponseDto, SyncRegistrationDto> syncRegistrationService;
+    private static final String USER = "MOSIP_SYSTEM";
+    private static final String VALUE = "value";
 
     /**
      * method to deploy external stage verticle
@@ -412,7 +383,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     List<BIRType> bIRTypeList = cbeffutil.getBIRDataFromXML(xml);
                     List<String> subtype = new ArrayList<>();
                     byte[] photoBytes = getPhotoByTypeAndSubType(bIRTypeList, "FACE", subtype);
-                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, CryptoUtil.encodeBase64String(extractFaceImageData(photoBytes)));
+                    String jpegImageUrl = jp2ImageConverter.convert(extractFaceImageData.extract(photoBytes));
+                    responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, jpegImageUrl);
                 }
             }
             if (docFields.get(proofOfExceptionsLabel) != null) {
@@ -424,30 +396,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    protected BiometricRecord getBiometrics(String id, String person, List<String> modalities, String source, String process) throws ApisResourceAccessException, PacketManagerException, JsonProcessingException, IOException {
-
-        BiometricRequestDto fieldDto = new BiometricRequestDto(id, person, modalities, source, process, false);
-
-        RequestWrapper<BiometricRequestDto> request = new RequestWrapper<>();
-        request.setId(ID);
-        request.setVersion(VERSION);
-        request.setRequesttime(DateUtils.getUTCCurrentDateTime());
-        request.setRequest(fieldDto);
-        ResponseWrapper<BiometricRecord> response = (ResponseWrapper) registrationProcessorRestService.postApi(ApiName.PACKETMANAGER_SEARCH_BIOMETRICS, "", "", request, ResponseWrapper.class);
-
-        if (response.getErrors() != null && response.getErrors().size() > 0) {
-            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id, JsonUtils.javaObjectToJsonString(response));
-            throw new PacketManagerException(response.getErrors().get(0).getErrorCode(), response.getErrors().get(0).getMessage());
-        }
-//        ObjectMapper objectMapper = new ObjectMapper();
-        if (response.getResponse() != null) {
-            BiometricRecord biometricRecord = objectMapper.readValue(JsonUtils.javaObjectToJsonString(response.getResponse()), BiometricRecord.class);
-            return biometricRecord;
-        }
-        return null;
-
     }
 
     private byte[] getPhotoByTypeAndSubType(List<BIRType> bIRTypeList, String type, List<String> subType) {
@@ -481,54 +429,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
             }
         }
         return isType;
-    }
-
-    public byte[] extractFaceImageData(byte[] decodedBioValue) {
-
-        try (DataInputStream din = new DataInputStream(new ByteArrayInputStream(decodedBioValue))) {
-
-            byte[] format = new byte[4];
-            din.read(format, 0, 4);
-            byte[] version = new byte[4];
-            din.read(version, 0, 4);
-            int recordLength = din.readInt();
-            short numberofRepresentionRecord = din.readShort();
-            byte certificationFlag = din.readByte();
-            byte[] temporalSequence = new byte[2];
-            din.read(temporalSequence, 0, 2);
-            int representationLength = din.readInt();
-            byte[] representationData = new byte[representationLength - 4];
-            din.read(representationData, 0, representationData.length);
-            try (DataInputStream rdin = new DataInputStream(new ByteArrayInputStream(representationData))) {
-                byte[] captureDetails = new byte[14];
-                rdin.read(captureDetails, 0, 14);
-                byte noOfQualityBlocks = rdin.readByte();
-                if (noOfQualityBlocks > 0) {
-                    byte[] qualityBlocks = new byte[noOfQualityBlocks * 5];
-                    rdin.read(qualityBlocks, 0, qualityBlocks.length);
-                }
-                short noOfLandmarkPoints = rdin.readShort();
-                byte[] facialInformation = new byte[15];
-                rdin.read(facialInformation, 0, 15);
-                if (noOfLandmarkPoints > 0) {
-                    byte[] landmarkPoints = new byte[noOfLandmarkPoints * 8];
-                    rdin.read(landmarkPoints, 0, landmarkPoints.length);
-                }
-                byte faceType = rdin.readByte();
-                byte imageDataType = rdin.readByte();
-                byte[] otherImageInformation = new byte[9];
-                rdin.read(otherImageInformation, 0, otherImageInformation.length);
-                int lengthOfImageData = rdin.readInt();
-
-                byte[] image = new byte[lengthOfImageData];
-                rdin.read(image, 0, lengthOfImageData);
-
-                return image;
-            }
-        } catch (Exception ex) {
-            throw new PDFGeneratorException(PDFGeneratorExceptionCodeConstant.PDF_EXCEPTION.getErrorCode(),
-                    ex.getMessage() + ExceptionUtils.getStackTrace(ex));
-        }
     }
 
     private void postRejectMethod(RoutingContext ctx, MessageDRPrequestDTO messageDTO, InternalRegistrationStatusDto registrationStatusDto, DrpDto drpDto) {
