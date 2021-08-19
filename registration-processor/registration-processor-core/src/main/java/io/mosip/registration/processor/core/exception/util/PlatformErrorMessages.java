@@ -1192,6 +1192,12 @@ public enum PlatformErrorMessages {
 	/** The external stage failed. */
 	EXTERNAL_STAGE_FAILED("", "External Stage Failed"),
 
+	/** The drp stage failed. */
+	DRP_STAGE_FAILED(PlatformConstants.RPR_DRP_STAGE+"01", "DRP Stage Failed"),
+
+	/** The drp stage rejected. */
+	DRP_STAGE_REJECTED(PlatformConstants.RPR_DRP_STAGE+"02", "DRP Stage Rejected"),
+
 	/** internal error for unknown reason. */
 	INTERNAL_ERROR_UNKNOWN(PlatformConstants.ABIS + "01", "internal error for reason - %s"),
 

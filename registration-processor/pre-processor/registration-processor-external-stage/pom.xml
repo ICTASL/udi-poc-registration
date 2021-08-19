@@ -57,6 +57,41 @@
 			<artifactId>javax.inject</artifactId>
 			<version>1</version>
 		</dependency>
+        <dependency>
+            <groupId>io.mosip.registrationprocessor</groupId>
+            <artifactId>registration-processor-packet-manager</artifactId>
+            <version>1.1.5</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.mosip.registrationprocessor</groupId>
+            <artifactId>registration-processor-info-storage-service</artifactId>
+            <version>1.1.5</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.mosip.registrationprocessor</groupId>
+            <artifactId>registration-processor-message-sender-impl</artifactId>
+            <version>1.1.5</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+			<groupId>io.mosip.registrationprocessor</groupId>
+			<artifactId>registration-processor-message-sender-impl</artifactId>
+			<version>1.1.5</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.github.jai-imageio</groupId>
+			<artifactId>jai-imageio-jpeg2000</artifactId>
+			<version>1.4.0</version>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/com.github.jai-imageio/jai-imageio-core -->
+		<dependency>
+			<groupId>com.github.jai-imageio</groupId>
+			<artifactId>jai-imageio-core</artifactId>
+			<version>1.4.0</version>
+		</dependency>
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>

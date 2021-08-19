@@ -37,6 +37,8 @@ public enum ModuleName {
 
 	EXTERNAL,
 
+	DRP,
+
 	UIN_GENERATOR,
 
 	PRINT_STAGE,

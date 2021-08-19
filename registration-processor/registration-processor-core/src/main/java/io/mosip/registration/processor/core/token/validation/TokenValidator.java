@@ -162,6 +162,11 @@ public class TokenValidator {
 				if (role.contains(assignedRole))
 					return true;
 			}
+		} else if (url.contains("external")) {
+			for (String assignedRole : APIAuthorityList.EXTERNALSTAGEDRP.getList()) {
+				if (role.contains(assignedRole))
+					return true;
+			}
 		}
 		regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(), "",
 				"TokenValidator::validateAccess()::exit");
