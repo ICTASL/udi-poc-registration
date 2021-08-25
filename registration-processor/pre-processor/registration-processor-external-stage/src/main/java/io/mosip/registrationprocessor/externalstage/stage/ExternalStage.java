@@ -57,7 +57,7 @@ import java.io.*;
 import java.util.*;
 
 /**
- * External stage verticle class
+ * External stage verticle class with customized DRP API integration.
  */
 @Service
 public class ExternalStage extends MosipVerticleAPIManager {
