@@ -193,7 +193,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     @Override
     public void start() {
-        router.setRoute(this.postUrl(vertx, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT));
+        router.setRoute(this.postUrl(getVertx(), MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT));
         this.routes(router);
         this.createServer(router.getRouter(), Integer.parseInt(port));
     }
@@ -668,11 +668,11 @@ public class ExternalStage extends MosipVerticleAPIManager {
         InternalRegistrationStatusDto registrationStatusDto = registrationStatusService
                 .getRegistrationStatus(registrationId);
         DrpDto drpDto = null;
-        try {
-            registrationStatusDto
-                    .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
-            registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
 
+        registrationStatusDto
+                .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.EXTERNAL_INTEGRATION.toString());
+        registrationStatusDto.setRegistrationStageName(this.getClass().getSimpleName());
+        try {
             Boolean temp = false;
             if (registrationStatusDto != null && registrationId.equals(registrationStatusDto.getRegistrationId())) {
                 List<DrpDto> drpDtoList = drpService.getDrpEntryByRegId(registrationId);
@@ -705,8 +705,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_SUCCESS.getMessage());
                 registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_SUCCESS.getCode());
                 registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
-                object.setIsValid(true);
-                object.setInternalError(false);
+                object.setIsValid(Boolean.TRUE);
+                object.setInternalError(Boolean.FALSE);
                 isTransactionSuccessful = true;
                 description.setMessage(
                         PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getMessage() + " -- " + registrationId);
@@ -718,8 +718,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_FAILED.getMessage());
                 registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_FAILED.getCode());
                 registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-                object.setIsValid(false);
-                object.setInternalError(false);
+                object.setIsValid(Boolean.FALSE);
+                object.setInternalError(Boolean.TRUE);
                 description
                         .setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage() + " -- " + registrationId);
                 description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
@@ -728,17 +728,18 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     registrationId, description.getMessage());
         } catch (Exception e) {
             registrationStatusDto.setStatusComment(
-                    trimExceptionMsg.trimExceptionMessage(StatusUtil.UNKNOWN_EXCEPTION_OCCURED + e.getMessage()));
+                    trimExceptionMsg.trimExceptionMessage(StatusUtil.UNKNOWN_EXCEPTION_OCCURED.getMessage() + e.getMessage()));
             registrationStatusDto.setSubStatusCode(StatusUtil.UNKNOWN_EXCEPTION_OCCURED.getCode());
-            registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
+            registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.name());
             registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                    .getStatusCode(RegistrationExceptionTypeCode.UNEXCEPTED_ERROR));
-            description.setCode(PlatformErrorMessages.RPR_BDD_UNKNOWN_EXCEPTION.getCode());
-            description.setMessage(PlatformErrorMessages.RPR_BDD_UNKNOWN_EXCEPTION.getMessage());
+                    .getStatusCode(RegistrationExceptionTypeCode.EXCEPTION));
+            description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
+            description.setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage());
             regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), description.getCode(), registrationId,
                     description.getMessage() + e.getMessage() + ExceptionUtils.getStackTrace(e));
-            object.setInternalError(true);
-            object.setIsValid(false);
+            object.setInternalError(Boolean.TRUE);
+            object.setIsValid(Boolean.FALSE);
+            object.setRid(registrationStatusDto.getRegistrationId());
         } finally {
 
             if (object.getInternalError()) {
