@@ -229,7 +229,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
             apiName = obj.getString("apiName");
             JsonObject requestJson = obj.getJsonObject("request");
 
-            messageDTO.setApiName(obj.getString("apiName"));
             messageDTO.setRid(obj.getString("rid"));
             messageDTO.setIsValid(obj.getBoolean("isValid"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
