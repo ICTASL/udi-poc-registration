@@ -1,5 +1,6 @@
 package io.mosip.registrationprocessor.externalstage.stage;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosip.kernel.biometrics.entities.BiometricRecord;
 import io.mosip.kernel.core.cbeffutil.jaxbclasses.BIRType;
@@ -53,7 +54,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.*;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -182,7 +183,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     public void deployVerticle() {
         this.mosipEventBus = this.getEventBus(this, clusterManagerUrl, workerPoolSize);
-        this.consume(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, messageExpiryTimeLimit);
+        this.consume(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, messageExpiryTimeLimit);
     }
 
     /*
@@ -651,9 +652,22 @@ public class ExternalStage extends MosipVerticleAPIManager {
      * @param messageDTO the message DTO
      */
     public void sendMessage(MessageDTO messageDTO) {
-        this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
-        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(), "",
-                "DRPExternalStage::consumerListener()::sent to DRP External handler");
+        ObjectMapper mapper = new ObjectMapper();
+
+        try {
+            String messageDTOJson = mapper.writeValueAsString(messageDTO);
+
+            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
+            regProcLogger.info(messageDTO.getRid(),
+                    "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
+                    null);
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(), "",
+                    "DRPExternalStage::consumerListener()::sent to DRP External handler");
+        } catch (JsonProcessingException jpEx) {
+            regProcLogger.error("Exception sendMessage() " + jpEx.getMessage());
+        }
+
+
     }
 
     /**
