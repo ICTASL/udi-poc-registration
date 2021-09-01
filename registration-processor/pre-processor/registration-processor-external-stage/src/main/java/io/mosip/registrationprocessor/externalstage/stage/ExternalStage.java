@@ -654,11 +654,14 @@ public class ExternalStage extends MosipVerticleAPIManager {
         ObjectMapper mapper = new ObjectMapper();
 
         try {
+            MessageDTO mosipMessageDto = new MessageDTO();
+            mosipMessageDto.setRid(messageDTO.getRid());
+            mosipMessageDto.setReg_type(messageDTO.getReg_type());
             String messageDTOJson = mapper.writeValueAsString(messageDTO);
 
-            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
-            regProcLogger.info(messageDTO.getRid(),
-                    "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
+            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, mosipMessageDto);
+            regProcLogger.info(mosipMessageDto.getRid(),
+                    "Packet entered to the sendMessage() with  mosipMessageDto =>> " + messageDTOJson, null,
                     null);
             regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(), "",
                     "DRPExternalStage::consumerListener()::sent to DRP External handler");
