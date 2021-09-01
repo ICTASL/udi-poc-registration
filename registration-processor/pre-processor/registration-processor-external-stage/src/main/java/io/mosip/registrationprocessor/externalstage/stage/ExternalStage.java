@@ -654,10 +654,21 @@ public class ExternalStage extends MosipVerticleAPIManager {
         ObjectMapper mapper = new ObjectMapper();
 
         try {
-            String messageDTOJson = mapper.writeValueAsString(messageDTO);
+            MessageDTO mosipMessageDto = new MessageDTO();
+            mosipMessageDto.setReg_type(messageDTO.getReg_type());
+            mosipMessageDto.setRid(messageDTO.getRid());
+            mosipMessageDto.setIsValid(messageDTO.getIsValid());
+            mosipMessageDto.setInternalError(messageDTO.getInternalError());
+            mosipMessageDto.setMessageBusAddress(messageDTO.getMessageBusAddress());
+            mosipMessageDto.setRetryCount(messageDTO.getRetryCount());
+            mosipMessageDto.setTags(messageDTO.getTags());
+            mosipMessageDto.setLastHopTimestamp(messageDTO.getLastHopTimestamp());
 
-            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
-            regProcLogger.info(messageDTO.getRid(),
+
+            String messageDTOJson = mapper.writeValueAsString(mosipMessageDto);
+
+            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, mosipMessageDto);
+            regProcLogger.info(mosipMessageDto.getRid(),
                     "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
                     null);
             regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(), "",
