@@ -183,7 +183,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     public void deployVerticle() {
         this.mosipEventBus = this.getEventBus(this, clusterManagerUrl, workerPoolSize);
-        this.consume(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, messageExpiryTimeLimit);
+        this.consumeAndSend(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN,
+                MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageExpiryTimeLimit);
     }
 
     /*
@@ -193,7 +194,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     @Override
     public void start() {
-        router.setRoute(this.postUrl(getVertx(), MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT));
+        router.setRoute(this.postUrl(vertx, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT));
         this.routes(router);
         this.createServer(router.getRouter(), Integer.parseInt(port));
     }
@@ -509,7 +510,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
 
         if (messageDTO.getIsValid()) {
-//            MessageDTO mosipMessageDto = convertDrpdtoToMosipdto(messageDTO);
             sendMessage(messageDTO);
             this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
             regProcLogger.info(messageDTO.getRid(),
@@ -649,10 +649,11 @@ public class ExternalStage extends MosipVerticleAPIManager {
     /**
      * sends messageDTO to camel bridge.
      *
-     * @param messageDTO the message DTO
+     * @param drpMessageDTO the message DTO
      */
-    public void sendMessage(MessageDTO messageDTO) {
+    public void sendMessage(MessageDRPrequestDTO drpMessageDTO) {
         ObjectMapper mapper = new ObjectMapper();
+        MessageDTO messageDTO = convertDrpdtoToMosipdto(drpMessageDTO);
 
         try {
             String messageDTOJson = mapper.writeValueAsString(messageDTO);
