@@ -229,7 +229,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
             apiName = obj.getString("apiName");
             JsonObject requestJson = obj.getJsonObject("request");
 
-            messageDTO.setApiName(apiName);
             messageDTO.setRid(obj.getString("rid"));
             messageDTO.setIsValid(obj.getBoolean("isValid"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
@@ -510,8 +509,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
 
         if (messageDTO.getIsValid()) {
-            MessageDTO mosipMessageDto = convertDrpdtoToMosipdto(messageDTO);
-            sendMessage(mosipMessageDto);
+//            MessageDTO mosipMessageDto = convertDrpdtoToMosipdto(messageDTO);
+            sendMessage(messageDTO);
             this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
             regProcLogger.info(messageDTO.getRid(),
                     "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage", null,
