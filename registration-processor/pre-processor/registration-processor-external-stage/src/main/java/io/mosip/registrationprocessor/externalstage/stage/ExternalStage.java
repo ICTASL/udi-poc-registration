@@ -637,7 +637,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
         demographicDataPutString("dualCitizenshipIssueDate", matchedDemographicIdentity, dataMap);
         demographicDataPutList("dualCitizenshipSectionNo", matchedDemographicIdentity, dataMap);
         demographicDataPutList("dualCitizenshipOtherNationality", matchedDemographicIdentity, dataMap);
-//        demographicDataPutString("rNumber", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("rNumber", matchedDemographicIdentity, dataMap);
         return dataMap;
     }
 
