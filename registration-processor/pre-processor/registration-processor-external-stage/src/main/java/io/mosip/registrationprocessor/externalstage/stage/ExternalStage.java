@@ -229,6 +229,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
             apiName = obj.getString("apiName");
             JsonObject requestJson = obj.getJsonObject("request");
 
+            messageDTO.setApiName(apiName);
             messageDTO.setRid(obj.getString("rid"));
             messageDTO.setIsValid(obj.getBoolean("isValid"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
@@ -657,7 +658,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
         try {
             String messageDTOJson = mapper.writeValueAsString(messageDTO);
 
-            this.consumeAndSend(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageExpiryTimeLimit);
+            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
             regProcLogger.info(messageDTO.getRid(),
                     "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
                     null);
@@ -671,19 +672,14 @@ public class ExternalStage extends MosipVerticleAPIManager {
     }
 
     private MessageDTO convertDrpdtoToMosipdto(MessageDRPrequestDTO drpDto) {
-        MessageDTO mosipMessageDto = new MessageDTO();
-        mosipMessageDto.setReg_type(drpDto.getReg_type());
-        mosipMessageDto.setRid(drpDto.getRid());
-        mosipMessageDto.setIsValid(drpDto.getIsValid());
-        mosipMessageDto.setInternalError(drpDto.getInternalError());
-        mosipMessageDto.setMessageBusAddress(drpDto.getMessageBusAddress());
-        mosipMessageDto.setRetryCount(drpDto.getRetryCount());
-        mosipMessageDto.setTags(drpDto.getTags());
-        mosipMessageDto.setLastHopTimestamp(drpDto.getLastHopTimestamp());
+        MessageDTO messageDto = new MessageDTO();
+        messageDto.setRid(drpDto.getRid());
+        messageDto.setReg_type(drpDto.getReg_type());
+        messageDto.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_OUT);
 
-        regProcLogger.info(drpDto.getRid(), LoggerFileConstant.USERID.toString(), "",
-                "convertDrpdtoToMosipdto() returns " + mosipMessageDto);
-        return mosipMessageDto;
+        regProcLogger.info(messageDto.getRid(), LoggerFileConstant.USERID.toString(), "",
+                "convertDrpdtoToMosipdto() returns => " + JsonObject.mapFrom(messageDto));
+        return messageDto;
     }
 
     /**
