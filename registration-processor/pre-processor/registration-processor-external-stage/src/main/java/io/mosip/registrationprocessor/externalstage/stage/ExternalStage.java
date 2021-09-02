@@ -509,7 +509,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
 
         if (messageDTO.getIsValid()) {
-            sendMessage(messageDTO);
+            MessageDTO mosipMessageDto = convertDrpdtoToMosipdto(messageDTO);
+            sendMessage(mosipMessageDto);
             this.setResponse(ctx, "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage");
             regProcLogger.info(messageDTO.getRid(),
                     "Packet with registrationId '" + messageDTO.getRid() + "' has been forwarded to next stage", null,
@@ -654,21 +655,10 @@ public class ExternalStage extends MosipVerticleAPIManager {
         ObjectMapper mapper = new ObjectMapper();
 
         try {
-            MessageDTO mosipMessageDto = new MessageDTO();
-            mosipMessageDto.setReg_type(messageDTO.getReg_type());
-            mosipMessageDto.setRid(messageDTO.getRid());
-            mosipMessageDto.setIsValid(messageDTO.getIsValid());
-            mosipMessageDto.setInternalError(messageDTO.getInternalError());
-            mosipMessageDto.setMessageBusAddress(messageDTO.getMessageBusAddress());
-            mosipMessageDto.setRetryCount(messageDTO.getRetryCount());
-            mosipMessageDto.setTags(messageDTO.getTags());
-            mosipMessageDto.setLastHopTimestamp(messageDTO.getLastHopTimestamp());
+            String messageDTOJson = mapper.writeValueAsString(messageDTO);
 
-
-            String messageDTOJson = mapper.writeValueAsString(mosipMessageDto);
-
-            this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, mosipMessageDto);
-            regProcLogger.info(mosipMessageDto.getRid(),
+            this.consumeAndSend(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageExpiryTimeLimit);
+            regProcLogger.info(messageDTO.getRid(),
                     "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
                     null);
             regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.USERID.toString(), "",
@@ -678,6 +668,22 @@ public class ExternalStage extends MosipVerticleAPIManager {
         }
 
 
+    }
+
+    private MessageDTO convertDrpdtoToMosipdto(MessageDRPrequestDTO drpDto) {
+        MessageDTO mosipMessageDto = new MessageDTO();
+        mosipMessageDto.setReg_type(drpDto.getReg_type());
+        mosipMessageDto.setRid(drpDto.getRid());
+        mosipMessageDto.setIsValid(drpDto.getIsValid());
+        mosipMessageDto.setInternalError(drpDto.getInternalError());
+        mosipMessageDto.setMessageBusAddress(drpDto.getMessageBusAddress());
+        mosipMessageDto.setRetryCount(drpDto.getRetryCount());
+        mosipMessageDto.setTags(drpDto.getTags());
+        mosipMessageDto.setLastHopTimestamp(drpDto.getLastHopTimestamp());
+
+        regProcLogger.info(drpDto.getRid(), LoggerFileConstant.USERID.toString(), "",
+                "convertDrpdtoToMosipdto() returns " + mosipMessageDto);
+        return mosipMessageDto;
     }
 
     /**
