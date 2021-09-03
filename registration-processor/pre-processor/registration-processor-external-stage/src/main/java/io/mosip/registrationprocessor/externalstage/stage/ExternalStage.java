@@ -183,8 +183,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     public void deployVerticle() {
         this.mosipEventBus = this.getEventBus(this, clusterManagerUrl, workerPoolSize);
-        this.consumeAndSend(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN,
-                MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageExpiryTimeLimit);
+        this.consume(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, messageExpiryTimeLimit);
     }
 
     /*
@@ -230,6 +229,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
             apiName = obj.getString("apiName");
             JsonObject requestJson = obj.getJsonObject("request");
 
+            messageDTO.setApiName(obj.getString("apiName"));
             messageDTO.setRid(obj.getString("rid"));
             messageDTO.setIsValid(obj.getBoolean("isValid"));
             messageDTO.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_IN);
