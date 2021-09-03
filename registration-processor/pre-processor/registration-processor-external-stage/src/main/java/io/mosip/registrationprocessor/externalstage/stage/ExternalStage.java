@@ -658,6 +658,10 @@ public class ExternalStage extends MosipVerticleAPIManager {
         try {
             String messageDTOJson = mapper.writeValueAsString(messageDTO);
 
+            regProcLogger.info(messageDTO.getRid(),
+                    "before send => " + messageDTOJson + "with lastHopTimestamp => " + messageDTO.getLastHopTimestamp(), null,
+                    null);
+
             this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
             regProcLogger.info(messageDTO.getRid(),
                     "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
