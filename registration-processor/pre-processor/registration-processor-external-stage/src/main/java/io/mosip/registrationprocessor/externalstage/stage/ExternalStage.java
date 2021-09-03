@@ -750,16 +750,20 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 description.setCode(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode());
 
             } else {
-                registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                        .getStatusCode(RegistrationExceptionTypeCode.EXTERNAL_INTEGRATION_FAILED));
-                registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_FAILED.getMessage());
-                registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_FAILED.getCode());
-                registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-                object.setIsValid(Boolean.FALSE);
-                object.setInternalError(Boolean.TRUE);
-                description
-                        .setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage() + " -- " + registrationId);
-                description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
+
+                regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                        "",
+                        "ExternalStage::process():: inside Else block temp value =>  " + temp.toString());
+//                registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
+//                        .getStatusCode(RegistrationExceptionTypeCode.EXTERNAL_INTEGRATION_FAILED));
+//                registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_FAILED.getMessage());
+//                registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_FAILED.getCode());
+//                registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
+//                object.setIsValid(Boolean.FALSE);
+//                object.setInternalError(Boolean.TRUE);
+//                description
+//                        .setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage() + " -- " + registrationId);
+//                description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
             }
             regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                     registrationId, description.getMessage());
