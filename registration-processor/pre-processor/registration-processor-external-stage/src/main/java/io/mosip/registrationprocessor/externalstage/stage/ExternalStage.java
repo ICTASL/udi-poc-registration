@@ -680,6 +680,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
         messageDto.setRid(drpDto.getRid());
         messageDto.setReg_type(drpDto.getReg_type());
         messageDto.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_OUT);
+        messageDto.setIsValid(Boolean.TRUE);
+        messageDto.setInternalError(Boolean.FALSE);
 
         regProcLogger.info(messageDto.getRid(), LoggerFileConstant.USERID.toString(), "",
                 "convertDrpdtoToMosipdto() returns => " + JsonObject.mapFrom(messageDto));
