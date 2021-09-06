@@ -605,8 +605,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
         demographicDataPutList("province", matchedDemographicIdentity, dataMap);
         demographicDataPutList("district", matchedDemographicIdentity, dataMap);
         demographicDataPutList("city", matchedDemographicIdentity, dataMap);
-        demographicDataPutList("addressLine1", matchedDemographicIdentity, dataMap);
-        demographicDataPutList("addressLine2", matchedDemographicIdentity, dataMap);
         demographicDataPutList("residenceStatus", matchedDemographicIdentity, dataMap);
         demographicDataPutList("maritalStatus", matchedDemographicIdentity, dataMap);
         demographicDataPutString("dateOfBirth", matchedDemographicIdentity, dataMap);
