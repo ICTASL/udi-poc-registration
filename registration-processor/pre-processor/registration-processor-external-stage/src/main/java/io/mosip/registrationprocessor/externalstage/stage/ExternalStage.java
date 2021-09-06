@@ -183,7 +183,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     public void deployVerticle() {
         this.mosipEventBus = this.getEventBus(this, clusterManagerUrl, workerPoolSize);
-        this.consume(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, messageExpiryTimeLimit);
+        this.consumeAndSend(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageExpiryTimeLimit);
     }
 
     /*
@@ -678,6 +678,10 @@ public class ExternalStage extends MosipVerticleAPIManager {
         try {
             String messageDTOJson = mapper.writeValueAsString(messageDTO);
 
+            regProcLogger.info(messageDTO.getRid(),
+                    "before send => " + messageDTOJson + "with lastHopTimestamp => " + messageDTO.getLastHopTimestamp(), null,
+                    null);
+
             this.send(this.mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageDTO);
             regProcLogger.info(messageDTO.getRid(),
                     "Packet entered to the sendMessage() with  MessageDTO =>> " + messageDTOJson, null,
@@ -696,6 +700,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
         messageDto.setRid(drpDto.getRid());
         messageDto.setReg_type(drpDto.getReg_type());
         messageDto.setMessageBusAddress(MessageBusAddress.EXTERNAL_STAGE_BUS_OUT);
+        messageDto.setIsValid(Boolean.TRUE);
+        messageDto.setInternalError(Boolean.FALSE);
 
         regProcLogger.info(messageDto.getRid(), LoggerFileConstant.USERID.toString(), "",
                 "convertDrpdtoToMosipdto() returns => " + JsonObject.mapFrom(messageDto));
@@ -764,16 +770,20 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 description.setCode(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode());
 
             } else {
-                registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                        .getStatusCode(RegistrationExceptionTypeCode.EXTERNAL_INTEGRATION_FAILED));
-                registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_FAILED.getMessage());
-                registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_FAILED.getCode());
-                registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-                object.setIsValid(Boolean.FALSE);
-                object.setInternalError(Boolean.TRUE);
-                description
-                        .setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage() + " -- " + registrationId);
-                description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
+
+                regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                        "",
+                        "ExternalStage::process():: inside Else block temp value =>  " + temp.toString());
+//                registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
+//                        .getStatusCode(RegistrationExceptionTypeCode.EXTERNAL_INTEGRATION_FAILED));
+//                registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_FAILED.getMessage());
+//                registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_FAILED.getCode());
+//                registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
+//                object.setIsValid(Boolean.FALSE);
+//                object.setInternalError(Boolean.TRUE);
+//                description
+//                        .setMessage(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getMessage() + " -- " + registrationId);
+//                description.setCode(PlatformErrorMessages.EXTERNAL_STAGE_FAILED.getCode());
             }
             regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                     registrationId, description.getMessage());
