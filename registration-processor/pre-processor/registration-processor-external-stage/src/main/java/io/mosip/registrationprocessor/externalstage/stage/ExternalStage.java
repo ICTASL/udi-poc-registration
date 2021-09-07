@@ -617,6 +617,26 @@ public class ExternalStage extends MosipVerticleAPIManager {
         demographicDataPutList("gnDivision", matchedDemographicIdentity, dataMap);
         demographicDataPutList("permanentAddress", matchedDemographicIdentity, dataMap);
         demographicDataPutList("temporaryAddress", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("printedName", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("layName", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("shortenedPrintedName", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("title", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("bcertificateAvailability", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("bcertificateNo", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("bcertificateIssueDate", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("bcertificateCountry", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("bcertificateDistrict", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("bcertificateDivision", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("bcertificatePlaceOfBirth", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("applicantLanguage", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("nicIssueDate", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("nicSerialNo", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("dualCitizenshipAvailability", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("dualCitizenshipCertificateNo", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("dualCitizenshipIssueDate", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("dualCitizenshipSectionNo", matchedDemographicIdentity, dataMap);
+        demographicDataPutList("dualCitizenshipOtherNationality", matchedDemographicIdentity, dataMap);
+        demographicDataPutString("rNumber", matchedDemographicIdentity, dataMap);
         return dataMap;
     }
 
