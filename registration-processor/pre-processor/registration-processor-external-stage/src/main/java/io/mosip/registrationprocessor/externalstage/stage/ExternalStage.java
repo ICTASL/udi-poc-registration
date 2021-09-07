@@ -342,6 +342,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
             String proofOfExceptionsLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POE), VALUE);
             String applicantBiometricLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(identityMappingJson, MappingJsonConstants.INDIVIDUAL_BIOMETRICS), VALUE);
             String introducerBiometricLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(identityMappingJson, MappingJsonConstants.PARENT_OR_GUARDIAN_BIO), VALUE);
+            String proofOfConcentLabel = "proofOfConsent";
 
             List<String> fields = new ArrayList<>();
             fields.add(proofOfAddressLabel);
@@ -351,16 +352,17 @@ public class ExternalStage extends MosipVerticleAPIManager {
             fields.add(proofOfExceptionsLabel);
             fields.add(applicantBiometricLabel);
             fields.add(introducerBiometricLabel);
+            fields.add(proofOfConcentLabel);
 
 
             String registrationId = messageDTO.getRid();
             String process = messageDTO.getReg_type().name();
             Map<String, String> docFields = packetManagerService.getFields(registrationId, fields, process, ProviderStageName.PACKET_VALIDATOR);
 
-            if (docFields.get(proofOfAddressLabel) != null) {
-                Document aaa = packetManagerService.getDocument(registrationId, proofOfAddressLabel, process, ProviderStageName.PACKET_VALIDATOR);
-                responceMap.put(proofOfAddressLabel, CryptoUtil.encodeBase64String(aaa.getDocument()));
-            }
+//            if (docFields.get(proofOfAddressLabel) != null) {
+//                Document aaa = packetManagerService.getDocument(registrationId, proofOfAddressLabel, process, ProviderStageName.PACKET_VALIDATOR);
+//                responceMap.put(proofOfAddressLabel, CryptoUtil.encodeBase64String(aaa.getDocument()));
+//            }
             if (docFields.get(proofOfDateOfBirthLabel) != null) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfDateOfBirthLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
@@ -369,12 +371,17 @@ public class ExternalStage extends MosipVerticleAPIManager {
             if (docFields.get(proofOfIdentityLabel) != null) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfIdentityLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
-                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
+                    responceMap.put(proofOfIdentityLabel, CryptoUtil.encodeBase64String(response));
             }
-            if (docFields.get(proofOfRelationshipLabel) != null) {
-                byte[] response = packetManagerService.getDocument(registrationId, proofOfRelationshipLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+//            if (docFields.get(proofOfRelationshipLabel) != null) {
+//                byte[] response = packetManagerService.getDocument(registrationId, proofOfRelationshipLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+//                if (response != null)
+//                    responceMap.put(proofOfRelationshipLabel, CryptoUtil.encodeBase64String(response));
+//            }
+            if (docFields.get(proofOfConcentLabel) != null) {
+                byte[] response = packetManagerService.getDocument(registrationId, proofOfConcentLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
-                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
+                    responceMap.put(proofOfConcentLabel, CryptoUtil.encodeBase64String(response));
             }
             if (docFields.get(applicantBiometricLabel) != null) {
                 BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
@@ -387,11 +394,11 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, jpegImageUrl);
                 }
             }
-            if (docFields.get(proofOfExceptionsLabel) != null) {
-                byte[] response = packetManagerService.getDocument(registrationId, proofOfExceptionsLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
-                if (response != null)
-                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
-            }
+//            if (docFields.get(proofOfExceptionsLabel) != null) {
+//                byte[] response = packetManagerService.getDocument(registrationId, proofOfExceptionsLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+//                if (response != null)
+//                    responceMap.put(proofOfExceptionsLabel, CryptoUtil.encodeBase64String(response));
+//            }
             return responceMap;
         } catch (Exception e) {
             return null;
