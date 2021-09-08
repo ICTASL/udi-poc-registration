@@ -337,22 +337,22 @@ public class ExternalStage extends MosipVerticleAPIManager {
             String process = messageDTO.getReg_type().name();
             Map<String, String> docFields = packetManagerService.getFields(registrationId, fields, process, ProviderStageName.PACKET_VALIDATOR);
 
-            if (StringUtils.isNotEmpty(docFields.get(proofOfDateOfBirthLabel)) && docFields.get(proofOfDateOfBirthLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(proofOfDateOfBirthLabel))) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfDateOfBirthLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
                     responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
             }
-            if (StringUtils.isNotEmpty(docFields.get(proofOfIdentityLabel)) && docFields.get(proofOfIdentityLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(proofOfIdentityLabel))) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfIdentityLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
                     responceMap.put(proofOfIdentityLabel, CryptoUtil.encodeBase64String(response));
             }
-            if (StringUtils.isNotEmpty(docFields.get(proofOfConcentLabel)) && docFields.get(proofOfConcentLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(proofOfConcentLabel))) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfConcentLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
                     responceMap.put(proofOfConcentLabel, CryptoUtil.encodeBase64String(response));
             }
-            if (StringUtils.isNotEmpty(docFields.get(applicantBiometricLabel)) && docFields.get(applicantBiometricLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(applicantBiometricLabel))) {
                 BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
                 if (biometricRecord != null && biometricRecord.getSegments() != null && biometricRecord.getSegments().size() != 0) {
                     byte[] xml = cbeffutil.createXML(BIRConverter.convertSegmentsToBIRList(biometricRecord.getSegments()));
