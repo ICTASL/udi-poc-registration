@@ -23,7 +23,6 @@ import io.mosip.registration.processor.core.status.util.StatusUtil;
 import io.mosip.registration.processor.core.status.util.TrimExceptionMessage;
 import io.mosip.registration.processor.core.util.JsonUtil;
 import io.mosip.registration.processor.core.util.RegistrationExceptionMapperUtil;
-import io.mosip.registration.processor.packet.storage.dto.Document;
 import io.mosip.registration.processor.packet.storage.utils.BIRConverter;
 import io.mosip.registration.processor.packet.storage.utils.IdSchemaUtil;
 import io.mosip.registration.processor.packet.storage.utils.PriorityBasedPacketManagerService;
@@ -45,6 +44,7 @@ import io.mosip.registrationprocessor.externalstage.utils.NotificationUtility;
 import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -63,10 +63,6 @@ import java.util.*;
 @Service
 public class ExternalStage extends MosipVerticleAPIManager {
     /**
-     * The reg proc logger.
-     */
-    private static Logger regProcLogger = RegProcessorLogger.getLogger(ExternalStage.class);
-    /**
      * request id
      */
     private static final String ID = "io.mosip.registrationprocessor";
@@ -74,6 +70,32 @@ public class ExternalStage extends MosipVerticleAPIManager {
      * request version
      */
     private static final String VERSION = "1.0";
+    /**
+     * The Constant USER.
+     */
+    private static final String USER = "MOSIP_SYSTEM";
+    private static final String VALUE = "value";
+    /**
+     * The reg proc logger.
+     */
+    private static final Logger regProcLogger = RegProcessorLogger.getLogger(ExternalStage.class);
+    /**
+     * Mosip router for APIs
+     */
+    @Autowired
+    MosipRouter router;
+    /**
+     * The description.
+     */
+    @Autowired
+    LogDescription description;
+    @Autowired
+    RegistrationExceptionMapperUtil registrationStatusMapperUtil;
+    /**
+     * The utilities.
+     */
+    @Autowired
+    Utilities utility;
     /**
      * mosipEventBus
      */
@@ -83,100 +105,56 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     @Value("${vertx.cluster.configuration}")
     private String clusterManagerUrl;
-
     /**
      * server port number.
      */
     @Value("${server.port}")
     private String port;
-
     /**
      * worker pool size.
      */
     @Value("${worker.pool.size}")
     private Integer workerPoolSize;
-
     /**
      * After this time intervel, message should be considered as expired (In seconds).
      */
     @Value("${mosip.regproc.external.message.expiry-time-limit}")
     private Long messageExpiryTimeLimit;
-
     @Value("${mosip.commons.packet.manager.schema.validator.convertIdSchemaToDouble:true}")
     private boolean convertIdschemaToDouble;
-
     /**
      * The context path.
      */
     @Value("${server.servlet.path}")
     private String contextPath;
-
     @Value("${mosip.notificationtype}")
     private String notificationTypes;
-
     @Autowired
     private AuditLogRequestBuilder auditLogRequestBuilder;
-
-    /**
-     * Mosip router for APIs
-     */
-    @Autowired
-    MosipRouter router;
-
-    /**
-     * The description.
-     */
-    @Autowired
-    LogDescription description;
-
     /**
      * The registration status service.
      */
     @Autowired
     private RegistrationStatusService<String, InternalRegistrationStatusDto, RegistrationStatusDto> registrationStatusService;
-
     @Autowired
     private DrpService<DrpDto> drpService;
-
     @Autowired
     private PriorityBasedPacketManagerService packetManagerService;
-
     @Autowired
     private IdSchemaUtil idSchemaUtil;
-
     /**
      * rest client to send requests.
      */
     @Autowired
     private RegistrationProcessorRestClientService<Object> registrationProcessorRestService;
-
-    @Autowired
-    RegistrationExceptionMapperUtil registrationStatusMapperUtil;
-
-    /**
-     * The utilities.
-     */
-    @Autowired
-    Utilities utility;
-
     @Autowired
     private NotificationUtility notificationUtility;
-
     @Autowired
     private CbeffUtil cbeffutil;
-
     @Autowired
     private JP2ImageConverter jp2ImageConverter;
-
     @Autowired
     private ExtractFaceImageData extractFaceImageData;
-
-
-    /**
-     * The Constant USER.
-     */
-    private static final String USER = "MOSIP_SYSTEM";
-    private static final String VALUE = "value";
 
     /**
      * method to deploy external stage verticle
@@ -359,31 +337,22 @@ public class ExternalStage extends MosipVerticleAPIManager {
             String process = messageDTO.getReg_type().name();
             Map<String, String> docFields = packetManagerService.getFields(registrationId, fields, process, ProviderStageName.PACKET_VALIDATOR);
 
-//            if (docFields.get(proofOfAddressLabel) != null) {
-//                Document aaa = packetManagerService.getDocument(registrationId, proofOfAddressLabel, process, ProviderStageName.PACKET_VALIDATOR);
-//                responceMap.put(proofOfAddressLabel, CryptoUtil.encodeBase64String(aaa.getDocument()));
-//            }
-            if (docFields.get(proofOfDateOfBirthLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(proofOfDateOfBirthLabel)) && docFields.get(proofOfDateOfBirthLabel) != null) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfDateOfBirthLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
                     responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
             }
-            if (docFields.get(proofOfIdentityLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(proofOfIdentityLabel)) && docFields.get(proofOfIdentityLabel) != null) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfIdentityLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
                     responceMap.put(proofOfIdentityLabel, CryptoUtil.encodeBase64String(response));
             }
-//            if (docFields.get(proofOfRelationshipLabel) != null) {
-//                byte[] response = packetManagerService.getDocument(registrationId, proofOfRelationshipLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
-//                if (response != null)
-//                    responceMap.put(proofOfRelationshipLabel, CryptoUtil.encodeBase64String(response));
-//            }
-            if (docFields.get(proofOfConcentLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(proofOfConcentLabel)) && docFields.get(proofOfConcentLabel) != null) {
                 byte[] response = packetManagerService.getDocument(registrationId, proofOfConcentLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
                 if (response != null)
                     responceMap.put(proofOfConcentLabel, CryptoUtil.encodeBase64String(response));
             }
-            if (docFields.get(applicantBiometricLabel) != null) {
+            if (StringUtils.isNotEmpty(docFields.get(applicantBiometricLabel)) && docFields.get(applicantBiometricLabel) != null) {
                 BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
                 if (biometricRecord != null && biometricRecord.getSegments() != null && biometricRecord.getSegments().size() != 0) {
                     byte[] xml = cbeffutil.createXML(BIRConverter.convertSegmentsToBIRList(biometricRecord.getSegments()));
@@ -394,11 +363,6 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, jpegImageUrl);
                 }
             }
-//            if (docFields.get(proofOfExceptionsLabel) != null) {
-//                byte[] response = packetManagerService.getDocument(registrationId, proofOfExceptionsLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
-//                if (response != null)
-//                    responceMap.put(proofOfExceptionsLabel, CryptoUtil.encodeBase64String(response));
-//            }
             return responceMap;
         } catch (Exception e) {
             return null;
@@ -647,7 +611,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     private void demographicDataPutString(String key, JSONObject matchedDemographicIdentity, Map dataMap) {
         try {
-            dataMap.put(key, (String) matchedDemographicIdentity.get(key).toString());
+            dataMap.put(key, matchedDemographicIdentity.get(key).toString());
         } catch (Exception e) {
             dataMap.put(key, "N/A");
         }
@@ -655,7 +619,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
     private void demographicDataPutList(String key, JSONObject matchedDemographicIdentity, Map dataMap) {
         try {
-            dataMap.put(key, (String) ((Map<String, String>) ((List) matchedDemographicIdentity.get(key)).get(0)).get("value"));
+            dataMap.put(key, ((Map<String, String>) ((List) matchedDemographicIdentity.get(key)).get(0)).get("value"));
         } catch (Exception e) {
             dataMap.put(key, "N/A");
         }
@@ -870,11 +834,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
                 if (rejectReason != null)
                     emailInfoDTO.setReason(rejectReason);
 
-                if (isTransactionSuccessful) {
-                    isProcessingSuccess = true;
-                } else {
-                    isProcessingSuccess = false;
-                }
+                isProcessingSuccess = isTransactionSuccessful;
                 notificationUtility.sendNotification(emailInfoDTO, registrationStatusDto, allNotificationTypes, isProcessingSuccess);
             }
         } catch (Exception e) {
