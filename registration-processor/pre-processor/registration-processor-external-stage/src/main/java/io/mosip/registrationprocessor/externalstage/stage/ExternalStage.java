@@ -161,7 +161,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
      */
     public void deployVerticle() {
         this.mosipEventBus = this.getEventBus(this, clusterManagerUrl, workerPoolSize);
-        this.consumeAndSend(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, MessageBusAddress.EXTERNAL_STAGE_BUS_OUT, messageExpiryTimeLimit);
+        this.consume(mosipEventBus, MessageBusAddress.EXTERNAL_STAGE_BUS_IN, messageExpiryTimeLimit);
     }
 
     /*
