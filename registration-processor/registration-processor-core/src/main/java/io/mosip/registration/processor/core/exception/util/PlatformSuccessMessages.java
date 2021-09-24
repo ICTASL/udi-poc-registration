@@ -69,7 +69,7 @@ public enum PlatformSuccessMessages {
 
 	RPR_SENT_TO_REPROCESS_SUCCESS(PlatformConstants.RPR_REPROCESSOR_STAGE + "001", "sent to reprocess Success"),
 
-	RPR_EXTERNAL_STAGE_SUCCESS(PlatformConstants.RPR_EXTERNAL_STAGE + "000", "External stage  Success"),
+	RPR_EXTERNAL_STAGE_SUCCESS(PlatformConstants.RPR_EXTERNAL_STAGE + "000", "External stage picked Success and in DRP Stage"),
 
 	RPR_DRP_STAGE_SUCCESS(PlatformConstants.RPR_DRP_STAGE + "000", "DRP stage  Success"),
 

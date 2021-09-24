@@ -727,7 +727,7 @@ public class ExternalStage extends MosipVerticleAPIManager {
 
             if (temp) {
                 registrationStatusDto
-                        .setLatestTransactionStatusCode(RegistrationTransactionStatusCode.SUCCESS.toString());
+                        .setLatestTransactionStatusCode(RegistrationTransactionStatusCode.PROCESSED.toString());
                 registrationStatusDto.setStatusComment(StatusUtil.EXTERNAL_STAGE_SUCCESS.getMessage());
                 registrationStatusDto.setSubStatusCode(StatusUtil.EXTERNAL_STAGE_SUCCESS.getCode());
                 registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
@@ -787,8 +787,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
             registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
 
             if (isTransactionSuccessful) {
-                description.setMessage(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getMessage());
-                description.setCode(PlatformSuccessMessages.RPR_PKR_PACKET_VALIDATE.getCode());
+                description.setMessage(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getMessage());
+                description.setCode(PlatformSuccessMessages.RPR_EXTERNAL_STAGE_SUCCESS.getCode());
             }
             String eventId = isTransactionSuccessful ? EventId.RPR_402.toString() : EventId.RPR_405.toString();
             String eventName = isTransactionSuccessful ? EventName.UPDATE.toString() : EventName.EXCEPTION.toString();

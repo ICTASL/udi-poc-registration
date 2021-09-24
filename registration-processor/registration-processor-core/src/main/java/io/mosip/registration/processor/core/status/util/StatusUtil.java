@@ -48,8 +48,8 @@ public enum StatusUtil {
 	PACKET_CLASSIFICATION_SUCCESS(StatusConstants.PACKET_CLASSIFIER_MODULE_SUCCESS + "001","Packet Classification is Successful"),
 
 	// External stage
-	EXTERNAL_STAGE_SUCCESS(StatusConstants.EXTERNAL_SATGE_MODULE_SUCCESS + "000", "Packet processing in External stage is successful"),
-	EXTERNAL_STAGE_FAILED(StatusConstants.EXTERNAL_SATGE_MODULE_FAILED + "001", "Packet processing in External stage failed"),
+	EXTERNAL_STAGE_SUCCESS(StatusConstants.EXTERNAL_SATGE_MODULE_SUCCESS + "000", "Packet picked by external stage and in DRP stage successful"),
+	EXTERNAL_STAGE_FAILED(StatusConstants.EXTERNAL_SATGE_MODULE_FAILED + "001", "Packet picked by external stage and in DRP stage failed"),
 
 	// DRP stage
 	DRP_STAGE_SUCCESS(StatusConstants.DRP_SATGE_MODULE_SUCCESS + "000", "Packet processing in DRP stage is successful"),
