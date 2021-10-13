@@ -311,47 +311,18 @@ public class ExternalStage extends MosipVerticleAPIManager {
     private Map<String, String> getImage(MessageDTO messageDTO) {
         Map<String, String> responceMap = new HashMap<>();
         try {
-            JSONObject docMappingJson = utility.getRegistrationProcessorMappingJson(MappingJsonConstants.DOCUMENT);
             JSONObject identityMappingJson = utility.getRegistrationProcessorMappingJson(MappingJsonConstants.IDENTITY);
-            String proofOfAddressLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POA), VALUE);
-            String proofOfDateOfBirthLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POB), VALUE);
-            String proofOfIdentityLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POI), VALUE);
-            String proofOfRelationshipLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POR), VALUE);
-            String proofOfExceptionsLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, MappingJsonConstants.POE), VALUE);
             String applicantBiometricLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(identityMappingJson, MappingJsonConstants.INDIVIDUAL_BIOMETRICS), VALUE);
             String introducerBiometricLabel = JsonUtil.getJSONValue(JsonUtil.getJSONObject(identityMappingJson, MappingJsonConstants.PARENT_OR_GUARDIAN_BIO), VALUE);
-            String proofOfConcentLabel = "proofOfConsent";
 
             List<String> fields = new ArrayList<>();
-            fields.add(proofOfAddressLabel);
-            fields.add(proofOfDateOfBirthLabel);
-            fields.add(proofOfIdentityLabel);
-            fields.add(proofOfRelationshipLabel);
-            fields.add(proofOfExceptionsLabel);
             fields.add(applicantBiometricLabel);
             fields.add(introducerBiometricLabel);
-            fields.add(proofOfConcentLabel);
-
 
             String registrationId = messageDTO.getRid();
             String process = messageDTO.getReg_type().name();
             Map<String, String> docFields = packetManagerService.getFields(registrationId, fields, process, ProviderStageName.PACKET_VALIDATOR);
 
-            if (StringUtils.isNotEmpty(docFields.get(proofOfDateOfBirthLabel))) {
-                byte[] response = packetManagerService.getDocument(registrationId, proofOfDateOfBirthLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
-                if (response != null)
-                    responceMap.put(proofOfDateOfBirthLabel, CryptoUtil.encodeBase64String(response));
-            }
-            if (StringUtils.isNotEmpty(docFields.get(proofOfIdentityLabel))) {
-                byte[] response = packetManagerService.getDocument(registrationId, proofOfIdentityLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
-                if (response != null)
-                    responceMap.put(proofOfIdentityLabel, CryptoUtil.encodeBase64String(response));
-            }
-            if (StringUtils.isNotEmpty(docFields.get(proofOfConcentLabel))) {
-                byte[] response = packetManagerService.getDocument(registrationId, proofOfConcentLabel, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
-                if (response != null)
-                    responceMap.put(proofOfConcentLabel, CryptoUtil.encodeBase64String(response));
-            }
             if (StringUtils.isNotEmpty(docFields.get(applicantBiometricLabel))) {
                 BiometricRecord biometricRecord = packetManagerService.getBiometricsByMappingJsonKey(registrationId, MappingJsonConstants.INDIVIDUAL_BIOMETRICS, process, ProviderStageName.PACKET_VALIDATOR);
                 if (biometricRecord != null && biometricRecord.getSegments() != null && biometricRecord.getSegments().size() != 0) {
@@ -363,10 +334,46 @@ public class ExternalStage extends MosipVerticleAPIManager {
                     responceMap.put(MappingJsonConstants.INDIVIDUAL_BIOMETRICS, jpegImageUrl);
                 }
             }
+
+        } catch (Exception e) {
+            return null;
+        }
+        return responceMap;
+    }
+
+    private Map<String, String> getDocuments(MessageDTO messageDTO) {
+        Map<String, String> responceMap = new HashMap<>();
+        try {
+            JSONObject docMappingJson = utility.getRegistrationProcessorMappingJson(MappingJsonConstants.DOCUMENT);
+            List<String> documentTypes = new ArrayList<String>(docMappingJson.keySet());
+            documentTypes.forEach(documentType -> {
+                List<String> fields = new ArrayList<>();
+                String documentTypeName = JsonUtil.getJSONValue(JsonUtil.getJSONObject(docMappingJson, documentType), VALUE);
+                fields.add(documentTypeName);
+                try {
+                    String registrationId = messageDTO.getRid();
+                    String process = messageDTO.getReg_type().name();
+                    Map<String, String> docFields = packetManagerService.getFields(registrationId, fields, process, ProviderStageName.PACKET_VALIDATOR);
+
+                    if (StringUtils.isNotEmpty(docFields.get(documentTypeName))) {
+                        byte[] response = packetManagerService.getDocument(registrationId, documentTypeName, process, ProviderStageName.PACKET_VALIDATOR).getDocument();
+                        if (response != null)
+                            responceMap.put(getCorrectDocumentName(documentTypeName), CryptoUtil.encodeBase64String(response));
+                    }
+                } catch (Exception e) {
+                    regProcLogger.error(e.getMessage());
+                    return;
+                }
+            });
             return responceMap;
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private String getCorrectDocumentName(String documentName) {
+        String nameWithSpace = documentName.replaceAll("(?=\\p{Upper})", " ");
+        return nameWithSpace.substring(0, 1).toUpperCase() + nameWithSpace.substring(1).toLowerCase();
     }
 
     private byte[] getPhotoByTypeAndSubType(List<BIRType> bIRTypeList, String type, List<String> subType) {
@@ -541,7 +548,8 @@ public class ExternalStage extends MosipVerticleAPIManager {
     private void getRidDataMethod(InternalRegistrationStatusDto registrationStatusDto, MessageDRPrequestDTO messageDTO, RoutingContext ctx) {
         if (registrationStatusDto != null && messageDTO.getRid().equalsIgnoreCase(registrationStatusDto.getRegistrationId())) {
             Map map = getDemographicData(registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType());
-            map.put("documents", getImage(messageDTO));
+            map.put("image", getImage(messageDTO));
+            map.put("documents", getDocuments(messageDTO));
             setResponse(ctx, map);
             messageDTO.setIsValid(Boolean.TRUE);
         } else {
